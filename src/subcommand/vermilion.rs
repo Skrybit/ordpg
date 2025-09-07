@@ -6,6 +6,7 @@ use social::initialize_social_tables;
 use social_api::social_router;
 use crate::subcommand::server;
 use crate::index::fetcher::Fetcher;
+use crate::subcommand::vermilion::api::TxidParam;
 use crate::subcommand::vermilion::api::{serve_openapi, ApiError};
 use crate::Charm;
 
@@ -14,8 +15,6 @@ use serde::Serialize;
 use sha256::digest;
 
 use axum::{
-  routing::get,
-  routing::post,
   Json, 
   Router,
   extract::{Path, State, Query},
@@ -32,11 +31,11 @@ use axum::{
 use axum_session::{Session, SessionNullPool, SessionConfig, SessionStore, SessionLayer};
 use aide::{  
   axum::{  
-    routing::get as aide_get,
-    routing::post as aide_post, 
+    routing::get,
+    routing::post, 
     ApiRouter, IntoApiResponse,  
   },  
-  openapi::{OpenApi},  
+  openapi::OpenApi,  
   scalar::Scalar,
   NoApi
 };
@@ -363,7 +362,7 @@ pub struct QueryNumber {
   n: Option<u32>
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct InscriptionQueryParams {
   content_types: Option<String>,
   satributes: Option<String>,
@@ -395,14 +394,14 @@ impl From<InscriptionQueryParams> for ParsedInscriptionQueryParams {
   }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, JsonSchema)]
 pub struct CollectionQueryParams {
   sort_by: Option<String>,
   page_number: Option<usize>,
   page_size: Option<usize>
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, JsonSchema)]
 pub struct PaginationParams {
   page_number: Option<usize>,
   page_size: Option<usize>
@@ -848,70 +847,70 @@ impl Vermilion {
         let mut api = OpenApi::default();
 
         let app = ApiRouter::new()
-          .api_route("/random_inscriptions", aide_get(Self::random_inscriptions))
-          .route("/trending_feed", get(Self::trending_feed))
-          .route("/discover_feed", get(Self::discover_feed))
+          .api_route("/random_inscriptions", get(Self::random_inscriptions))
+          .api_route("/trending_feed", get(Self::trending_feed))
+          .api_route("/discover_feed", get(Self::discover_feed))
           .layer(SessionLayer::new(session_store))
           .route("/", get(Self::root))
           .route("/home", get(Self::home))
-          .route("/inscription/{inscription_id}", get(Self::inscription))
-          .route("/inscription_number/{number}", get(Self::inscription_number))
-          .route("/inscription_sha256/{sha256}", get(Self::inscription_sha256))
-          .route("/inscription_metadata/{inscription_id}", get(Self::inscription_metadata))
-          .route("/inscription_metadata_number/{number}", get(Self::inscription_metadata_number))
-          .route("/inscription_edition/{inscription_id}", get(Self::inscription_edition))
-          .route("/inscription_edition_number/{number}", get(Self::inscription_edition_number))
-          .route("/inscription_editions_sha256/{sha256}", get(Self::inscription_editions_sha256))          
-          .route("/inscription_children/{inscription_id}", get(Self::inscription_children))
-          .route("/inscription_children_number/{number}", get(Self::inscription_children_number))
-          .route("/inscription_referenced_by/{inscription_id}", get(Self::inscription_referenced_by))
-          .route("/inscription_referenced_by_number/{number}", get(Self::inscription_referenced_by_number))
-          .route("/inscription_bootlegs/{inscription_id}", get(Self::inscription_bootlegs))
-          .route("/inscription_bootlegs_number/{number}", get(Self::inscription_bootlegs_number))
-          .route("/bootleg_edition/{inscription_id}", get(Self::bootleg_edition))
-          .route("/bootleg_edition_number/{number}", get(Self::bootleg_edition_number))
-          .route("/inscription_comments/{inscription_id}", get(Self::inscription_comments))
-          .route("/inscription_comments_number/{number}", get(Self::inscription_comments_number))
-          .route("/comment/{inscription_id}", get(Self::comment))
-          .route("/comment_number/{number}", get(Self::comment_number))
-          .route("/inscription_satribute_editions/{inscription_id}", get(Self::inscription_satribute_editions))
-          .route("/inscription_satribute_editions_number/{number}", get(Self::inscription_satribute_editions_number)) 
-          .route("/inscriptions_in_block/{block}", get(Self::inscriptions_in_block))
-          .route("/inscriptions", get(Self::inscriptions))
-          .route("/random_inscription", get(Self::random_inscription))
-          .route("/recent_inscriptions", get(Self::recent_inscriptions))
-          .route("/recent_boosts", get(Self::recent_boosts))
-          .route("/boost_leaderboard", get(Self::boost_leaderboard))
-          .api_route("/inscription_last_transfer/{inscription_id}", aide_get(Self::inscription_last_transfer))
-          .route("/inscription_last_transfer_number/{number}", get(Self::inscription_last_transfer_number))
-          .route("/inscription_transfers/{inscription_id}", get(Self::inscription_transfers))
-          .route("/inscription_transfers_number/{number}", get(Self::inscription_transfers_number))
-          .route("/inscriptions_in_address/{address}", get(Self::inscriptions_in_address))
-          .route("/inscriptions_on_sat/{sat}", get(Self::inscriptions_on_sat))
-          .route("/inscriptions_in_sat_block/{block}", get(Self::inscriptions_in_sat_block))
-          .route("/sat_metadata/{sat}", get(Self::sat_metadata))
-          .route("/satributes/{sat}", get(Self::satributes))
-          .route("/inscription_collection_data/{inscription_id}", get(Self::inscription_collection_data))
-          .route("/inscription_collection_data_number/{number}", get(Self::inscription_collection_data_number))
-          .route("/block_statistics/{block}", get(Self::block_statistics))
-          .route("/sat_block_statistics/{block}", get(Self::sat_block_statistics))
-          .route("/blocks", get(Self::blocks))          
-          .route("/collections", get(Self::collections))
-          .route("/collection_summary/{collection_symbol}", get(Self::collection_summary))          
-          .route("/collection_holders/{collection_symbol}", get(Self::collection_holders))
-          .route("/inscriptions_in_collection/{collection_symbol}", get(Self::inscriptions_in_collection))
-          .route("/on_chain_collections", get(Self::on_chain_collections))          
-          .route("/on_chain_collection_summary/{parents}", get(Self::on_chain_collection_summary))
-          .route("/on_chain_collection_holders/{parents}", get(Self::on_chain_collection_holders))
-          .route("/inscriptions_in_on_chain_collection/{parents}", get(Self::inscriptions_in_on_chain_collection))
-          .route("/search/{search_by_query}", get(Self::search_by_query))
-          .route("/block_icon/{block}", get(Self::block_icon))
-          .route("/sat_block_icon/{block}", get(Self::sat_block_icon))
-          .route("/block_transfers/{block}", get(Self::block_transfers))
-          .route("/submit_package", post(Self::submit_package))
-          .route("/get_raw_transaction/{txid}", get(Self::get_raw_transaction))
-          .route("/api.json", get(serve_openapi))
-          .route("/docs", Scalar::new("/api.json").axum_route())
+          .api_route("/inscription/{inscription_id}", get(Self::inscription))
+          .api_route("/inscription_number/{number}", get(Self::inscription_number))
+          .api_route("/inscription_sha256/{sha256}", get(Self::inscription_sha256))
+          .api_route("/inscription_metadata/{inscription_id}", get(Self::inscription_metadata))
+          .api_route("/inscription_metadata_number/{number}", get(Self::inscription_metadata_number))
+          .api_route("/inscription_edition/{inscription_id}", get(Self::inscription_edition))
+          .api_route("/inscription_edition_number/{number}", get(Self::inscription_edition_number))
+          .api_route("/inscription_editions_sha256/{sha256}", get(Self::inscription_editions_sha256))          
+          .api_route("/inscription_children/{inscription_id}", get(Self::inscription_children))
+          .api_route("/inscription_children_number/{number}", get(Self::inscription_children_number))
+          .api_route("/inscription_referenced_by/{inscription_id}", get(Self::inscription_referenced_by))
+          .api_route("/inscription_referenced_by_number/{number}", get(Self::inscription_referenced_by_number))
+          .api_route("/inscription_bootlegs/{inscription_id}", get(Self::inscription_bootlegs))
+          .api_route("/inscription_bootlegs_number/{number}", get(Self::inscription_bootlegs_number))
+          .api_route("/bootleg_edition/{inscription_id}", get(Self::bootleg_edition))
+          .api_route("/bootleg_edition_number/{number}", get(Self::bootleg_edition_number))
+          .api_route("/inscription_comments/{inscription_id}", get(Self::inscription_comments))
+          .api_route("/inscription_comments_number/{number}", get(Self::inscription_comments_number))
+          .api_route("/comment/{inscription_id}", get(Self::comment))
+          .api_route("/comment_number/{number}", get(Self::comment_number))
+          .api_route("/inscription_satribute_editions/{inscription_id}", get(Self::inscription_satribute_editions))
+          .api_route("/inscription_satribute_editions_number/{number}", get(Self::inscription_satribute_editions_number)) 
+          .api_route("/inscriptions_in_block/{block}", get(Self::inscriptions_in_block))
+          .api_route("/inscriptions", get(Self::inscriptions))
+          .api_route("/random_inscription", get(Self::random_inscription))
+          .api_route("/recent_inscriptions", get(Self::recent_inscriptions))
+          .api_route("/recent_boosts", get(Self::recent_boosts))
+          .api_route("/boost_leaderboard", get(Self::boost_leaderboard))
+          .api_route("/inscription_last_transfer/{inscription_id}", get(Self::inscription_last_transfer))
+          .api_route("/inscription_last_transfer_number/{number}", get(Self::inscription_last_transfer_number))
+          .api_route("/inscription_transfers/{inscription_id}", get(Self::inscription_transfers))
+          .api_route("/inscription_transfers_number/{number}", get(Self::inscription_transfers_number))
+          .api_route("/inscriptions_in_address/{address}", get(Self::inscriptions_in_address))
+          .api_route("/inscriptions_on_sat/{sat}", get(Self::inscriptions_on_sat))
+          .api_route("/inscriptions_in_sat_block/{block}", get(Self::inscriptions_in_sat_block))
+          .api_route("/sat_metadata/{sat}", get(Self::sat_metadata))
+          .api_route("/satributes/{sat}", get(Self::satributes))
+          .api_route("/inscription_collection_data/{inscription_id}", get(Self::inscription_collection_data))
+          .api_route("/inscription_collection_data_number/{number}", get(Self::inscription_collection_data_number))
+          .api_route("/block_statistics/{block}", get(Self::block_statistics))
+          .api_route("/sat_block_statistics/{block}", get(Self::sat_block_statistics))
+          .api_route("/blocks", get(Self::blocks))          
+          .api_route("/collections", get(Self::collections))
+          .api_route("/collection_summary/{collection_symbol}", get(Self::collection_summary))          
+          .api_route("/collection_holders/{collection_symbol}", get(Self::collection_holders))
+          .api_route("/inscriptions_in_collection/{collection_symbol}", get(Self::inscriptions_in_collection))
+          .api_route("/on_chain_collections", get(Self::on_chain_collections))          
+          .api_route("/on_chain_collection_summary/{parents}", get(Self::on_chain_collection_summary))
+          .api_route("/on_chain_collection_holders/{parents}", get(Self::on_chain_collection_holders))
+          .api_route("/inscriptions_in_on_chain_collection/{parents}", get(Self::inscriptions_in_on_chain_collection))
+          .api_route("/search/{search_by_query}", get(Self::search_by_query))
+          .api_route("/block_icon/{block}", get(Self::block_icon))
+          .api_route("/sat_block_icon/{block}", get(Self::sat_block_icon))
+          .api_route("/block_transfers/{block}", get(Self::block_transfers))
+          .api_route("/submit_package", post(Self::submit_package))
+          .api_route("/get_raw_transaction/{txid}", get(Self::get_raw_transaction))
+          .api_route("/api.json", get(serve_openapi))
+          .api_route("/docs", Scalar::new("/api.json").axum_route())
           .merge(social_router())
           .layer(map_response(Self::set_header))
           .layer(
@@ -3939,7 +3938,7 @@ impl Vermilion {
     Ok(params)
   }
 
-  async fn home(State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn home(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_ordinal_content(server_config.deadpool,  "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0".to_string()).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -3963,7 +3962,7 @@ impl Vermilion {
     response
   }
 
-  async fn inscription(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_ordinal_content(server_config.deadpool, inscription_id.to_string()).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4000,7 +3999,7 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn inscription_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_ordinal_content_by_number(server_config.deadpool,  number).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4030,7 +4029,7 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn inscription_sha256(Path(sha256): Path<String>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_sha256(Path(sha256): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_ordinal_content_by_sha256(server_config.deadpool, sha256.clone(), None, None).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4060,7 +4059,7 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn inscription_metadata(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_metadata(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let metadata = match Self::get_ordinal_metadata(server_config.deadpool, inscription_id.to_string()).await {
       Ok(metadata) => metadata,
       Err(error) => {
@@ -4079,7 +4078,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_metadata_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_metadata_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let metadata = match Self::get_ordinal_metadata_by_number(server_config.deadpool, number).await {
       Ok(metadata) => metadata,
       Err(error) => {
@@ -4097,7 +4096,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let edition = match Self::get_inscription_edition(server_config.deadpool, inscription_id.to_string()).await {
       Ok(edition) => edition,
       Err(error) => {
@@ -4114,7 +4113,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let edition = match Self::get_inscription_edition_number(server_config.deadpool, number).await {
       Ok(edition) => edition,
       Err(error) => {
@@ -4132,7 +4131,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_editions_sha256(Path(sha256): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_editions_sha256(Path(sha256): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let editions = match Self::get_matching_inscriptions_by_sha256(server_config.deadpool, sha256.clone(), params.0).await {
       Ok(editions) => editions,
       Err(error) => {
@@ -4149,7 +4148,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_children(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_children(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4176,7 +4175,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_children_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_children_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4204,7 +4203,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_referenced_by(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_referenced_by(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4231,7 +4230,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_referenced_by_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_referenced_by_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4259,7 +4258,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_bootlegs(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_bootlegs(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let delegates = match Self::get_inscription_bootlegs(server_config.deadpool, inscription_id.to_string(), params.0).await {
       Ok(delegates) => delegates,
       Err(error) => {
@@ -4276,7 +4275,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_bootlegs_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_bootlegs_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let delegates = match Self::get_inscription_bootlegs_by_number(server_config.deadpool, number, params.0).await {
       Ok(delegates) => delegates,
       Err(error) => {
@@ -4294,7 +4293,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn bootleg_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn bootleg_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let edition = match Self::get_bootleg_edition(server_config.deadpool, inscription_id.to_string()).await {
       Ok(edition) => edition,
       Err(error) => {
@@ -4311,7 +4310,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn bootleg_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn bootleg_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let edition = match Self::get_bootleg_edition_by_number(server_config.deadpool, number).await {
       Ok(edition) => edition,
       Err(error) => {
@@ -4329,7 +4328,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_comments(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_comments(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let delegates = match Self::get_inscription_comments(server_config.deadpool, inscription_id.to_string(), params.0).await {
       Ok(delegates) => delegates,
       Err(error) => {
@@ -4346,7 +4345,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_comments_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_comments_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let delegates = match Self::get_inscription_comments_by_number(server_config.deadpool, number, params.0).await {
       Ok(delegates) => delegates,
       Err(error) => {
@@ -4364,7 +4363,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_ordinal_comment(server_config.deadpool, inscription_id.to_string()).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4401,7 +4400,7 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn comment_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn comment_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_ordinal_comment_by_number(server_config.deadpool,  number).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4438,7 +4437,7 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn inscription_satribute_editions(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_satribute_editions(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let editions = match Self::get_inscription_satribute_editions(server_config.deadpool, inscription_id.to_string()).await {
       Ok(editions) => editions,
       Err(error) => {
@@ -4455,7 +4454,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_satribute_editions_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_satribute_editions_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let editions = match Self::get_inscription_satribute_editions_by_number(server_config.deadpool, number).await {
       Ok(editions) => editions,
       Err(error) => {
@@ -4473,7 +4472,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions_in_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions_in_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4501,7 +4500,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn random_inscription(State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn random_inscription(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let random_float = rng.gen::<f64>();
     let (inscription_number, _band) = match Self::get_random_inscription(server_config.deadpool, random_float).await {
@@ -4544,7 +4543,7 @@ impl Vermilion {
     Ok(Json(inscription_numbers))
   }
 
-  async fn recent_inscriptions(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn recent_inscriptions(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let n = n.0.n.unwrap_or(20) as i64;
     let inscriptions = match Self::get_recent_inscriptions(server_config.deadpool, n).await {
       Ok(inscriptions) => inscriptions,
@@ -4562,7 +4561,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn recent_boosts(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn recent_boosts(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let n = n.0.n.unwrap_or(20) as i64;
     let boosts = match Self::get_recent_boosts(server_config.deadpool, n).await {
       Ok(boosts) => boosts,
@@ -4580,7 +4579,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn boost_leaderboard(State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn boost_leaderboard(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let leaderboard = match Self::get_boost_leaderboard(server_config.deadpool).await {
       Ok(leaderboard) => leaderboard,
       Err(error) => {
@@ -4597,7 +4596,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn trending_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, session: Session<SessionNullPool>) -> impl axum::response::IntoResponse {
+  async fn trending_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, NoApi(session): NoApi<Session<SessionNullPool>>) -> impl IntoApiResponse {
     let mut bands_seen: Vec<i64> = session.get("trending_bands_seen").unwrap_or(Vec::new());
     for band in bands_seen.iter() {
       log::debug!("Trending Band: {:?}", band);
@@ -4625,7 +4624,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn discover_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, session: Session<SessionNullPool>) -> impl axum::response::IntoResponse {
+  async fn discover_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, NoApi(session): NoApi<Session<SessionNullPool>>) -> impl IntoApiResponse {
     let mut bands_seen: Vec<(f64, f64)> = session.get("discover_bands_seen").unwrap_or(Vec::new());
     for band in bands_seen.iter() {
       log::debug!("Discover Band: {:?}", band);
@@ -4653,7 +4652,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions(params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions(params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     //1. parse params
     let params = ParsedInscriptionQueryParams::from(params.0);
     //2. validate params
@@ -4721,7 +4720,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_last_transfer_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_last_transfer_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let transfer = match Self::get_last_ordinal_transfer_by_number(server_config.deadpool, number).await {
       Ok(transfer) => transfer,
       Err(error) => {
@@ -4738,7 +4737,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_transfers(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_transfers(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let transfers = match Self::get_ordinal_transfers(server_config.deadpool, inscription_id.to_string()).await {
       Ok(transfers) => transfers,
       Err(error) => {
@@ -4755,7 +4754,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_transfers_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_transfers_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let transfers = match Self::get_ordinal_transfers_by_number(server_config.deadpool, number).await {
       Ok(transfers) => transfers,
       Err(error) => {
@@ -4772,7 +4771,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions_in_address(Path(address): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions_in_address(Path(address): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4799,7 +4798,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions_on_sat(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions_on_sat(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let inscriptions: Vec<FullMetadata> = match Self::get_inscriptions_on_sat(server_config.deadpool, sat).await {
       Ok(inscriptions) => inscriptions,
       Err(error) => {
@@ -4816,7 +4815,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions_in_sat_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions_in_sat_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -4843,7 +4842,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn sat_metadata(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn sat_metadata(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let sat_metadata = match Self::get_sat_metadata(server_config.deadpool, sat).await {
       Ok(sat_metadata) => sat_metadata,
       Err(error) => {
@@ -4860,7 +4859,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn satributes(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn satributes(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let satributes = match Self::get_satributes(server_config.deadpool, sat).await {
       Ok(satributes) => satributes,
       Err(error) => {
@@ -4877,7 +4876,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     //1. parse params
     let params = params.0;
     let sort_by = params.clone().sort_by.unwrap_or("biggest_on_chain_footprint".to_string());
@@ -4912,7 +4911,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn collection_summary(Path(collection_symbol): Path<String>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn collection_summary(Path(collection_symbol): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let collection_summary = match Self::get_collection_summary(server_config.deadpool, collection_symbol.clone()).await {
       Ok(collection_summary) => collection_summary,
       Err(error) => {
@@ -4929,7 +4928,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn collection_holders(Path(collection_symbol): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn collection_holders(Path(collection_symbol): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let collection_holders = match Self::get_collection_holders(server_config.deadpool, collection_symbol.clone(), params.0).await {
       Ok(collection_holders) => collection_holders,
       Err(error) => {
@@ -4946,7 +4945,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_collection_data(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_collection_data(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let collection_data = match Self::get_inscription_collection_data(server_config.deadpool, inscription_id.to_string()).await {
       Ok(collection_data) => collection_data,
       Err(error) => {
@@ -4963,7 +4962,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_collection_data_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_collection_data_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let collection_data = match Self::get_inscription_collection_data_number(server_config.deadpool, number).await {
       Ok(collection_data) => collection_data,
       Err(error) => {
@@ -4980,7 +4979,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions_in_collection(Path(collection_symbol): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions_in_collection(Path(collection_symbol): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
       Err(error) => {
@@ -5007,7 +5006,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn on_chain_collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn on_chain_collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     //1. parse params
     let params = params.0;
     let sort_by = params.clone().sort_by.unwrap_or("biggest_on_chain_footprint".to_string());
@@ -5042,7 +5041,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn on_chain_collection_summary(Path(parents): Path<String>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn on_chain_collection_summary(Path(parents): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
     let collection_summary = match Self::get_on_chain_collection_summary(server_config.deadpool, parents_vec.clone()).await {
       Ok(collection_summary) => collection_summary,
@@ -5060,7 +5059,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn on_chain_collection_holders(Path(parents): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn on_chain_collection_holders(Path(parents): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
     let collection_holders = match Self::get_on_chain_collection_holders(server_config.deadpool, parents_vec.clone(), params.0).await {
       Ok(collection_holders) => collection_holders,
@@ -5078,7 +5077,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscriptions_in_on_chain_collection(Path(parents): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscriptions_in_on_chain_collection(Path(parents): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
     let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
       Ok(parsed_params) => parsed_params,
@@ -5106,7 +5105,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let block_stats = match Self::get_block_statistics(server_config.deadpool, block).await {
       Ok(block_stats) => block_stats,
       Err(error) => {
@@ -5123,7 +5122,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn sat_block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn sat_block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let block_stats = match Self::get_sat_block_statistics(server_config.deadpool, block).await {
       Ok(block_stats) => block_stats,
       Err(error) => {
@@ -5140,7 +5139,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn blocks(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn blocks(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     //1. parse params
     let params = params.0;
     let sort_by = params.clone().sort_by.unwrap_or("newest".to_string());
@@ -5175,7 +5174,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn search_by_query(Path(search_query): Path<String>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn search_by_query(Path(search_query): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let search_result = match Self::get_search_result(server_config.deadpool, search_query.clone()).await {
       Ok(search_result) => search_result,
       Err(error) => {
@@ -5192,7 +5191,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_block_icon(server_config.deadpool,  block).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -5212,7 +5211,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn sat_block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn sat_block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let content_blob = match Self::get_sat_block_icon(server_config.deadpool,  block).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -5232,7 +5231,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn block_transfers(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn block_transfers(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let transfers = match Self::get_block_transfers(server_config.deadpool, block).await {
       Ok(transfers) => transfers,
       Err(error) => {
@@ -5249,7 +5248,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn submit_package(State(server_config): State<ApiServerConfig>, Json(payload): Json<Vec<String>>) -> impl axum::response::IntoResponse {
+  async fn submit_package(State(server_config): State<ApiServerConfig>, Json(payload): Json<Vec<String>>) -> impl IntoApiResponse {
     // function should extract signed hex txs from the request body
     // and submit them using the bitcoin client
     // and return the txids
@@ -5290,9 +5289,9 @@ impl Vermilion {
     }
   }
 
-  async fn get_raw_transaction(State(server_config): State<ApiServerConfig>, Path(txid): Path<Txid>) -> impl axum::response::IntoResponse {
+  async fn get_raw_transaction(State(server_config): State<ApiServerConfig>, Path(txid): Path<TxidParam>) -> impl IntoApiResponse {
     let bitcoin_client = server_config.bitcoin_rpc_client;
-    match bitcoin_client.get_raw_transaction_info(&txid, None) {
+    match bitcoin_client.get_raw_transaction_info(&txid.0, None) {
       Ok(tx) => {
         (
           StatusCode::OK,

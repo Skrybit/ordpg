@@ -10,7 +10,7 @@ use axum::{
 };
 use indexmap::IndexMap;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::InscriptionId;
 
@@ -132,6 +132,31 @@ impl JsonSchema for InscriptionId {
         }
       },
       "required": ["inscription_id"]
+    })
+  }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TxidParam(pub bitcoin::Txid);
+
+impl JsonSchema for TxidParam {
+  fn schema_name() -> std::borrow::Cow<'static, str> {
+    "Txid".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "txid": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "Transaction ID: 64 hex characters",
+          "example": "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799"
+        }
+      },
+      "required": ["txid"]
     })
   }
 }
