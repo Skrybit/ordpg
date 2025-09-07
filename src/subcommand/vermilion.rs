@@ -4704,7 +4704,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_last_transfer(NoApi(Path(inscription_id)): NoApi<Path<InscriptionId>>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn inscription_last_transfer(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let transfer = match Self::get_last_ordinal_transfer(server_config.deadpool, inscription_id.to_string()).await {
       Ok(transfer) => transfer,
       Err(error) => {

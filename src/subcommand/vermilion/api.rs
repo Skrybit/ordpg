@@ -1,8 +1,7 @@
+use std::borrow::Cow;
+
 use aide::{
-  axum::IntoApiResponse,
-  generate::GenContext,
-  openapi::{MediaType, OpenApi, Operation},
-  OperationOutput,
+  axum::IntoApiResponse, generate::GenContext, openapi::{MediaType, OpenApi, Operation}, OperationOutput
 };
 use axum::{
   http::StatusCode,
@@ -10,8 +9,10 @@ use axum::{
   Extension, Json,
 };
 use indexmap::IndexMap;
-use schemars::JsonSchema;
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::Serialize;
+
+use crate::InscriptionId;
 
 pub async fn serve_openapi(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
   Json(api)
@@ -52,13 +53,11 @@ impl OperationOutput for ApiError {
             "text/plain; charset=utf-8".into(),
             MediaType {
               schema: Some(aide::openapi::SchemaObject {
-                json_schema: serde_json::json!({
+                json_schema: json_schema!({
                   "type": "string",
                   "description": "Bad request error message",
                   "example": "Invalid parameter value"
-                })
-                .try_into()
-                .unwrap(),
+                }),
                 example: Some(serde_json::json!("Invalid parameter value")),
                 external_docs: None,
               }),
@@ -76,13 +75,11 @@ impl OperationOutput for ApiError {
             "text/plain; charset=utf-8".into(),
             MediaType {
               schema: Some(aide::openapi::SchemaObject {
-                json_schema: serde_json::json!({
+                json_schema: json_schema!({
                   "type": "string",
                   "description": "Resource not found error message",
                   "example": "Resource not found"
-                })
-                .try_into()
-                .unwrap(),
+                }),
                 example: Some(serde_json::json!("Resource not found")),
                 external_docs: None,
               }),
@@ -100,13 +97,11 @@ impl OperationOutput for ApiError {
             "text/plain; charset=utf-8".into(),
             MediaType {
               schema: Some(aide::openapi::SchemaObject {
-                json_schema: serde_json::json!({
+                json_schema: json_schema!({
                   "type": "string",
                   "description": "Internal server error message",
                   "example": "Internal server error occurred"
-                })
-                .try_into()
-                .unwrap(),
+                }),
                 example: Some(serde_json::json!("Internal server error occurred")),
                 external_docs: None,
               }),
@@ -117,5 +112,26 @@ impl OperationOutput for ApiError {
         },
       ),
     ]
+  }
+}
+
+impl JsonSchema for InscriptionId {
+  fn schema_name() -> Cow<'static, str> {
+    "InscriptionId".into()
+  }
+  // Note: path parameters are expected in object properties
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "inscription_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}i\\d+$",
+          "description": "Inscription ID: 64 hex characters followed by 'i' and a number",
+          "example": "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0"
+        }
+      },
+      "required": ["inscription_id"]
+    })
   }
 }
