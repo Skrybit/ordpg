@@ -6,6 +6,7 @@ use social::initialize_social_tables;
 use social_api::social_router;
 use crate::subcommand::server;
 use crate::index::fetcher::Fetcher;
+use crate::subcommand::vermilion::api::{serve_openapi, ApiError};
 use crate::Charm;
 
 use tokio::task::JoinSet;
@@ -26,8 +27,20 @@ use axum::{
   http::Request,
   http::Response,
   http,
+  Extension,
 };
 use axum_session::{Session, SessionNullPool, SessionConfig, SessionStore, SessionLayer};
+use aide::{  
+  axum::{  
+    routing::get as aide_get,
+    routing::post as aide_post, 
+    ApiRouter, IntoApiResponse,  
+  },  
+  openapi::{OpenApi},  
+  scalar::Scalar,
+  NoApi
+};
+use schemars::JsonSchema;
 
 use tower_http::trace::TraceLayer;
 use tower_http::trace::DefaultMakeSpan;
@@ -67,6 +80,7 @@ mod rune_indexer;
 mod database;
 mod social;
 mod social_api;
+mod api;
 
 #[derive(Debug, Parser, Clone)]
 pub(crate) struct Vermilion {
@@ -344,7 +358,7 @@ pub struct InscriptionMetadataForBlock {
   timestamp: i64
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct QueryNumber {
   n: Option<u32>
 }
@@ -569,7 +583,7 @@ pub struct OnChainCollectionHolders {
   address_count: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct FullMetadata {  
   sequence_number: i64,
   id: String,
@@ -831,8 +845,10 @@ impl Vermilion {
           .with_table_name("sessions_table");
         let session_store = SessionStore::<SessionNullPool>::new(None, session_config).await.unwrap();
 
-        let app = Router::new()
-          .route("/random_inscriptions", get(Self::random_inscriptions))          
+        let mut api = OpenApi::default();
+
+        let app = ApiRouter::new()
+          .api_route("/random_inscriptions", aide_get(Self::random_inscriptions))
           .route("/trending_feed", get(Self::trending_feed))
           .route("/discover_feed", get(Self::discover_feed))
           .layer(SessionLayer::new(session_store))
@@ -866,7 +882,7 @@ impl Vermilion {
           .route("/recent_inscriptions", get(Self::recent_inscriptions))
           .route("/recent_boosts", get(Self::recent_boosts))
           .route("/boost_leaderboard", get(Self::boost_leaderboard))
-          .route("/inscription_last_transfer/{inscription_id}", get(Self::inscription_last_transfer))
+          .api_route("/inscription_last_transfer/{inscription_id}", aide_get(Self::inscription_last_transfer))
           .route("/inscription_last_transfer_number/{number}", get(Self::inscription_last_transfer_number))
           .route("/inscription_transfers/{inscription_id}", get(Self::inscription_transfers))
           .route("/inscription_transfers_number/{number}", get(Self::inscription_transfers_number))
@@ -894,6 +910,8 @@ impl Vermilion {
           .route("/block_transfers/{block}", get(Self::block_transfers))
           .route("/submit_package", post(Self::submit_package))
           .route("/get_raw_transaction/{txid}", get(Self::get_raw_transaction))
+          .route("/api.json", get(serve_openapi))
+          .route("/docs", Scalar::new("/api.json").axum_route())
           .merge(social_router())
           .layer(map_response(Self::set_header))
           .layer(
@@ -915,15 +933,17 @@ impl Vermilion {
               .allow_methods([http::Method::GET])
               .allow_origin(Any),
           )
-          .with_state(server_config);
+          .with_state(server_config)
+          .finish_api(&mut api)
+          .layer(Extension(api));
 
         let addr = SocketAddr::from(([127, 0, 0, 1], self.api_http_port.unwrap_or(81)));
         println!("listening on {}", addr);
         axum_server::Server::bind(addr)
-            .handle(handle)
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
+          .handle(handle)
+          .serve(app.into_make_service())
+          .await
+          .unwrap();
       });
       println!("Vermilion api server stopped");
     });
@@ -4500,27 +4520,28 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn random_inscriptions(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, session: Session<SessionNullPool>) -> impl axum::response::IntoResponse {
+  async fn random_inscriptions(  
+    n: Query<QueryNumber>,   
+    State(server_config): State<ApiServerConfig>,   
+    NoApi(session): NoApi<Session<SessionNullPool>>  
+  ) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let bands: Vec<(f64, f64)> = session.get("bands_seen").unwrap_or(Vec::new());
     for band in bands.iter() {
       log::debug!("Band: {:?}", band);
     }
-    let n = n.0.n.unwrap_or(20);
-    let (inscription_numbers, new_bands) = match Self::get_random_inscriptions(server_config.deadpool, n, bands).await {
-      Ok((inscription_numbers, new_bands)) => (inscription_numbers, new_bands),
-      Err(error) => {
-        log::warn!("Error getting /random_inscriptions: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving random inscriptions"),
-        ).into_response();
-      }
-    };
+    let n = n.0.n.unwrap_or(20);  
+
+    let (inscription_numbers, new_bands) = Self::get_random_inscriptions(
+      server_config.deadpool,
+      n,
+      bands
+    ).await.map_err(|error| {
+      log::warn!("Error getting /random_inscriptions: {}", error);
+      ApiError::InternalServerError("Error retrieving random inscriptions".to_string())
+    })?;
+    
     session.set("bands_seen", new_bands);
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscription_numbers),
-    ).into_response()
+    Ok(Json(inscription_numbers))
   }
 
   async fn recent_inscriptions(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
@@ -4683,7 +4704,7 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_last_transfer(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl axum::response::IntoResponse {
+  async fn inscription_last_transfer(NoApi(Path(inscription_id)): NoApi<Path<InscriptionId>>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
     let transfer = match Self::get_last_ordinal_transfer(server_config.deadpool, inscription_id.to_string()).await {
       Ok(transfer) => transfer,
       Err(error) => {
