@@ -186,7 +186,7 @@ pub struct Metadata {
   inscribed_by_address: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct SatMetadata {
   sat: i64,
   satributes: Vec<String>,
@@ -208,7 +208,7 @@ pub struct GalleryMetadata {
   inscription_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct Satribute {
   sat: i64,
   satribute: String,
@@ -222,7 +222,7 @@ pub struct ContentBlob {
   content_encoding: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct Transfer {
   id: String,
   block_number: i64,
@@ -301,7 +301,7 @@ pub struct Content {
   content_type: Option<String>
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct InscriptionNumberEdition {
   id: String,
   number: i64,
@@ -309,7 +309,7 @@ pub struct InscriptionNumberEdition {
   total: i64
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct SatributeEdition {
   satribute: String,
   sat: i64,
@@ -320,7 +320,7 @@ pub struct SatributeEdition {
   total: i64
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct BootlegEdition {
   delegate_id: String,
   bootleg_id: String,
@@ -333,7 +333,7 @@ pub struct BootlegEdition {
   block_number: i64
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct CommentEdition {
   delegate_id: String,
   comment_id: String,
@@ -506,7 +506,7 @@ pub struct Collection {
   off_chain_metadata: serde_json::Value
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct CollectionSummary {
   collection_symbol: String, 
   name: Option<String>,
@@ -555,7 +555,7 @@ pub struct InscriptionCollectionData {
   date_created: i64
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct OnChainCollectionSummary {
   parents: Vec<String>,
   parent_numbers: Vec<i64>,
@@ -4059,308 +4059,140 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn inscription_metadata(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let metadata = match Self::get_ordinal_metadata(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(metadata) => metadata,
-      Err(error) => {
-        log::warn!("Error getting /inscription_metadata: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving metadata for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json"),
-        (axum::http::header::CACHE_CONTROL, "public, max-age=31536000")]),
-      Json(metadata),
-    ).into_response()
+  async fn inscription_metadata(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
+    let metadata = Self::get_ordinal_metadata(server_config.deadpool, inscription_id.to_string()).await.map_err(|error| {
+      log::warn!("Error getting /inscription_metadata: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving metadata for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(metadata))
   }
 
-  async fn inscription_metadata_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let metadata = match Self::get_ordinal_metadata_by_number(server_config.deadpool, number).await {
-      Ok(metadata) => metadata,
-      Err(error) => {
-        log::warn!("Error getting /inscription_metadata_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving metadata for {}", number.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json"),
-        (axum::http::header::CACHE_CONTROL, "public, max-age=31536000")]),
-      Json(metadata),
-    ).into_response()
+  async fn inscription_metadata_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
+    let metadata = Self::get_ordinal_metadata_by_number(server_config.deadpool, number).await.map_err(|error| {
+      log::warn!("Error getting /inscription_metadata_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving metadata for {}", number.to_string()))
+    })?;
+    Ok(Json(metadata))
   }
 
-  async fn inscription_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let edition = match Self::get_inscription_edition(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(edition) => edition,
-      Err(error) => {
-        log::warn!("Error getting /inscription_edition: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving edition for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(edition),
-    ).into_response()
+  async fn inscription_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<InscriptionNumberEdition>, ApiError> {
+    let edition = Self::get_inscription_edition(server_config.deadpool, inscription_id.to_string()).await.map_err(|error| {
+      log::warn!("Error getting /inscription_edition: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving edition for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(edition))
   }
 
-  async fn inscription_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let edition = match Self::get_inscription_edition_number(server_config.deadpool, number).await {
-      Ok(edition) => edition,
-      Err(error) => {
-        log::warn!("Error getting /inscription_edition_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving edition for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(edition),
-    ).into_response()
+  async fn inscription_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<InscriptionNumberEdition>, ApiError> {
+    let edition = Self::get_inscription_edition_number(server_config.deadpool, number).await.map_err(|error| {
+      log::warn!("Error getting /inscription_edition_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving edition for {}", number))
+    })?;
+    Ok(Json(edition))
   }
 
-  async fn inscription_editions_sha256(Path(sha256): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let editions = match Self::get_matching_inscriptions_by_sha256(server_config.deadpool, sha256.clone(), params.0).await {
-      Ok(editions) => editions,
-      Err(error) => {
-        log::warn!("Error getting /inscription_editions_sha256: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving editions for {}", sha256),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(editions),
-    ).into_response()
+  async fn inscription_editions_sha256(Path(sha256): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionNumberEdition>>, ApiError> {
+    let editions = Self::get_matching_inscriptions_by_sha256(server_config.deadpool, sha256.clone(), params.0).await.map_err(|error| {
+      log::warn!("Error getting /inscription_editions_sha256: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving editions for {}", sha256))
+    })?;
+    Ok(Json(editions))
   }
 
-  async fn inscription_children(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscription_children: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let editions = match Self::get_inscription_children(server_config.deadpool, inscription_id.to_string(), parsed_params).await {
-      Ok(editions) => editions,
-      Err(error) => {
-        log::warn!("Error getting /inscription_children: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving children for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(editions),
-    ).into_response()
+  async fn inscription_children(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscription_children: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let editions = Self::get_inscription_children(server_config.deadpool, inscription_id.to_string(), parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscription_children: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving children for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(editions))
   }
 
-  async fn inscription_children_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscription_children_number: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let editions = match Self::get_inscription_children_by_number(server_config.deadpool, number, parsed_params).await {
-      Ok(editions) => editions,
-      Err(error) => {
-        log::warn!("Error getting /inscription_children_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving children for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(editions),
-    ).into_response()
+  async fn inscription_children_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscription_children_number: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let editions = Self::get_inscription_children_by_number(server_config.deadpool, number, parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscription_children_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving children for {}", number))
+    })?;
+    Ok(Json(editions))
   }
 
-  async fn inscription_referenced_by(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscription_referenced_by: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let referenced_by = match Self::get_inscription_referenced_by(server_config.deadpool, inscription_id.to_string(), parsed_params).await {
-      Ok(referenced_by) => referenced_by,
-      Err(error) => {
-        log::warn!("Error getting /inscription_referenced_by: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving referenced by for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(referenced_by),
-    ).into_response()
+  async fn inscription_referenced_by(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscription_referenced_by: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let referenced_by = Self::get_inscription_referenced_by(server_config.deadpool, inscription_id.to_string(), parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscription_referenced_by: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving referenced by for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(referenced_by))
   }
 
-  async fn inscription_referenced_by_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscription_referenced_by_number: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let referenced_by = match Self::get_inscription_referenced_by_number(server_config.deadpool, number, parsed_params).await {
-      Ok(referenced_by) => referenced_by,
-      Err(error) => {
-        log::warn!("Error getting /inscription_referenced_by_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving referenced by for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(referenced_by),
-    ).into_response()
+  async fn inscription_referenced_by_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscription_referenced_by_number: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let referenced_by = Self::get_inscription_referenced_by_number(server_config.deadpool, number, parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscription_referenced_by_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving referenced by for {}", number))
+    })?;
+    Ok(Json(referenced_by))
   }
 
-  async fn inscription_bootlegs(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let delegates = match Self::get_inscription_bootlegs(server_config.deadpool, inscription_id.to_string(), params.0).await {
-      Ok(delegates) => delegates,
-      Err(error) => {
-        log::warn!("Error getting /inscription_bootlegs: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving comments for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(delegates),
-    ).into_response()
+  async fn inscription_bootlegs(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<BootlegEdition>>, ApiError> {
+    let delegates = Self::get_inscription_bootlegs(server_config.deadpool, inscription_id.to_string(), params.0).await.map_err(|error| {
+      log::warn!("Error getting /inscription_bootlegs: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving bootlegs for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(delegates))
   }
 
-  async fn inscription_bootlegs_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let delegates = match Self::get_inscription_bootlegs_by_number(server_config.deadpool, number, params.0).await {
-      Ok(delegates) => delegates,
-      Err(error) => {
-        log::warn!("Error getting /inscription_bootlegs_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving bootlegs for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(delegates),
-    ).into_response()
+  async fn inscription_bootlegs_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<BootlegEdition>>, ApiError> {
+    let delegates = Self::get_inscription_bootlegs_by_number(server_config.deadpool, number, params.0).await.map_err(|error| {
+      log::warn!("Error getting /inscription_bootlegs_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving bootlegs for {}", number))
+    })?;
+    Ok(Json(delegates))
   }
 
-  async fn bootleg_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let edition = match Self::get_bootleg_edition(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(edition) => edition,
-      Err(error) => {
-        log::warn!("Error getting /bootleg_edition: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving bootleg edition for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(edition),
-    ).into_response()
+  async fn bootleg_edition(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<BootlegEdition>, ApiError> {
+    let edition = Self::get_bootleg_edition(server_config.deadpool, inscription_id.to_string()).await.map_err(|error| {
+      log::warn!("Error getting /bootleg_edition: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving bootleg edition for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(edition))
   }
 
-  async fn bootleg_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let edition = match Self::get_bootleg_edition_by_number(server_config.deadpool, number).await {
-      Ok(edition) => edition,
-      Err(error) => {
-        log::warn!("Error getting /bootleg_edition_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving bootleg edition for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(edition),
-    ).into_response()
+  async fn bootleg_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<BootlegEdition>, ApiError> {
+    let edition = Self::get_bootleg_edition_by_number(server_config.deadpool, number).await.map_err(|error| {
+      log::warn!("Error getting /bootleg_edition_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving bootleg edition for {}", number))
+    })?;
+    Ok(Json(edition))
   }
 
-  async fn inscription_comments(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let delegates = match Self::get_inscription_comments(server_config.deadpool, inscription_id.to_string(), params.0).await {
-      Ok(delegates) => delegates,
-      Err(error) => {
-        log::warn!("Error getting /inscription_comments: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving comments for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(delegates),
-    ).into_response()
+  async fn inscription_comments(Path(inscription_id): Path<InscriptionId>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CommentEdition>>, ApiError> {
+    let delegates = Self::get_inscription_comments(server_config.deadpool, inscription_id.to_string(), params.0).await.map_err(|error| {
+      log::warn!("Error getting /inscription_comments: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving comments for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(delegates))
   }
 
-  async fn inscription_comments_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let delegates = match Self::get_inscription_comments_by_number(server_config.deadpool, number, params.0).await {
-      Ok(delegates) => delegates,
-      Err(error) => {
-        log::warn!("Error getting /inscription_comments_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving comments for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(delegates),
-    ).into_response()
+  async fn inscription_comments_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CommentEdition>>, ApiError> {
+    let delegates = Self::get_inscription_comments_by_number(server_config.deadpool, number, params.0).await.map_err(|error| {
+      log::warn!("Error getting /inscription_comments_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving comments for {}", number))
+    })?;
+    Ok(Json(delegates))
   }
 
   async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
@@ -4437,67 +4269,32 @@ impl Vermilion {
     (header_map, bytes).into_response()
   }
 
-  async fn inscription_satribute_editions(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let editions = match Self::get_inscription_satribute_editions(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(editions) => editions,
-      Err(error) => {
-        log::warn!("Error getting /inscription_satribute_editions: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving satribute editions for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(editions),
-    ).into_response()
+  async fn inscription_satribute_editions(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<SatributeEdition>>, ApiError> {
+    let editions = Self::get_inscription_satribute_editions(server_config.deadpool, inscription_id.to_string()).await.map_err(|error| {
+      log::warn!("Error getting /inscription_satribute_editions: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving satribute editions for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(editions))
   }
 
-  async fn inscription_satribute_editions_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let editions = match Self::get_inscription_satribute_editions_by_number(server_config.deadpool, number).await {
-      Ok(editions) => editions,
-      Err(error) => {
-        log::warn!("Error getting /inscription_satribute_editions_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving satribute editions for {}", number),
-        ).into_response();
-      }
-    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(editions),
-    ).into_response()
+  async fn inscription_satribute_editions_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<SatributeEdition>>, ApiError> {
+    let editions = Self::get_inscription_satribute_editions_by_number(server_config.deadpool, number).await.map_err(|error| {
+      log::warn!("Error getting /inscription_satribute_editions_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving satribute editions for {}", number))
+    })?;
+    Ok(Json(editions))
   }
 
-  async fn inscriptions_in_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_in_block: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let inscriptions = match Self::get_inscriptions_within_block(server_config.deadpool, block, parsed_params).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_in_block: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions for block {}", block.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json"),
-      (axum::http::header::CACHE_CONTROL, "public, max-age=31536000")]),
-      Json(inscriptions),
-    ).into_response()
+  async fn inscriptions_in_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscriptions_in_block: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let inscriptions = Self::get_inscriptions_within_block(server_config.deadpool, block, parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscriptions_in_block: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving inscriptions for block {}", block.to_string()))
+    })?;
+    Ok(Json(inscriptions))
   }
 
   async fn random_inscription(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
@@ -4519,16 +4316,16 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn random_inscriptions(  
-    n: Query<QueryNumber>,   
-    State(server_config): State<ApiServerConfig>,   
-    NoApi(session): NoApi<Session<SessionNullPool>>  
+  async fn random_inscriptions(
+    n: Query<QueryNumber>, 
+    State(server_config): State<ApiServerConfig>, 
+    NoApi(session): NoApi<Session<SessionNullPool>>
   ) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let bands: Vec<(f64, f64)> = session.get("bands_seen").unwrap_or(Vec::new());
     for band in bands.iter() {
       log::debug!("Band: {:?}", band);
     }
-    let n = n.0.n.unwrap_or(20);  
+    let n = n.0.n.unwrap_or(20);
 
     let (inscription_numbers, new_bands) = Self::get_random_inscriptions(
       server_config.deadpool,
@@ -4538,27 +4335,18 @@ impl Vermilion {
       log::warn!("Error getting /random_inscriptions: {}", error);
       ApiError::InternalServerError("Error retrieving random inscriptions".to_string())
     })?;
-    
+
     session.set("bands_seen", new_bands);
     Ok(Json(inscription_numbers))
   }
 
-  async fn recent_inscriptions(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn recent_inscriptions(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let n = n.0.n.unwrap_or(20) as i64;
-    let inscriptions = match Self::get_recent_inscriptions(server_config.deadpool, n).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
-        log::warn!("Error getting /recent_inscriptions: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving recent inscriptions"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+    let inscriptions = Self::get_recent_inscriptions(server_config.deadpool, n).await.map_err(|error| {
+      log::warn!("Error getting /recent_inscriptions: {}", error);
+      ApiError::InternalServerError("Error retrieving recent inscriptions".to_string())
+    })?;
+    Ok(Json(inscriptions))
   }
 
   async fn recent_boosts(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
@@ -4703,99 +4491,48 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn inscription_last_transfer(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let transfer = match Self::get_last_ordinal_transfer(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(transfer) => transfer,
-      Err(error) => {
-        log::warn!("Error getting /inscription_last_transfer: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving last transfer for {}", inscription_id.to_string()),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(transfer),
-    ).into_response()
+  async fn inscription_last_transfer(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Transfer>, ApiError> {
+    let transfer = Self::get_last_ordinal_transfer(server_config.deadpool, inscription_id.to_string()).await.map_err(|error| {
+      log::warn!("Error getting /inscription_last_transfer: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving last transfer for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(transfer))
   }
 
-  async fn inscription_last_transfer_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let transfer = match Self::get_last_ordinal_transfer_by_number(server_config.deadpool, number).await {
-      Ok(transfer) => transfer,
-      Err(error) => {
-        log::warn!("Error getting /inscription_last_transfer_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving last transfer for {}", number),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(transfer),
-    ).into_response()
+  async fn inscription_last_transfer_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Transfer>, ApiError> {
+    let transfer = Self::get_last_ordinal_transfer_by_number(server_config.deadpool, number).await.map_err(|error| {
+      log::warn!("Error getting /inscription_last_transfer_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving last transfer for {}", number))
+    })?;
+    Ok(Json(transfer))
   }
 
-  async fn inscription_transfers(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let transfers = match Self::get_ordinal_transfers(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(transfers) => transfers,
-      Err(error) => {
-        log::warn!("Error getting /inscription_transfers: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving transfers for {}", inscription_id.to_string()),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(transfers),
-    ).into_response()
+  async fn inscription_transfers(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
+    let transfers = Self::get_ordinal_transfers(server_config.deadpool, inscription_id.to_string()).await.map_err(|error| {
+      log::warn!("Error getting /inscription_transfers: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving transfers for {}", inscription_id.to_string()))
+    })?;
+    Ok(Json(transfers))
   }
 
-  async fn inscription_transfers_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let transfers = match Self::get_ordinal_transfers_by_number(server_config.deadpool, number).await {
-      Ok(transfers) => transfers,
-      Err(error) => {
-        log::warn!("Error getting /inscription_transfers_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving transfers for {}", number),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(transfers),
-    ).into_response()
+  async fn inscription_transfers_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
+    let transfers = Self::get_ordinal_transfers_by_number(server_config.deadpool, number).await.map_err(|error| {
+      log::warn!("Error getting /inscription_transfers_number: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving transfers for {}", number))
+    })?;
+    Ok(Json(transfers))
   }
 
-  async fn inscriptions_in_address(Path(address): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_in_collection: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let inscriptions = match Self::get_inscriptions_by_address(server_config.deadpool, address.clone(), parsed_params).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_in_address: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions for {}", address),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+  async fn inscriptions_in_address(Path(address): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscriptions_in_address: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let inscriptions = Self::get_inscriptions_by_address(server_config.deadpool, address.clone(), parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscriptions_in_address: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", address))
+    })?;
+    Ok(Json(inscriptions))
   }
 
   async fn inscriptions_on_sat(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
@@ -4842,38 +4579,20 @@ impl Vermilion {
     ).into_response()
   }
 
-  async fn sat_metadata(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let sat_metadata = match Self::get_sat_metadata(server_config.deadpool, sat).await {
-      Ok(sat_metadata) => sat_metadata,
-      Err(error) => {
-        log::warn!("Error getting /sat_metadata: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving metadata for {}", sat),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(sat_metadata),
-    ).into_response()
+  async fn sat_metadata(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatMetadata>, ApiError> {
+    let sat_metadata = Self::get_sat_metadata(server_config.deadpool, sat).await.map_err(|error| {
+      log::warn!("Error getting /sat_metadata: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving metadata for {}", sat))
+    })?;
+    Ok(Json(sat_metadata))
   }
 
-  async fn satributes(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let satributes = match Self::get_satributes(server_config.deadpool, sat).await {
-      Ok(satributes) => satributes,
-      Err(error) => {
-        log::warn!("Error getting /satributes: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving satributes for {}", sat),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(satributes),
-    ).into_response()
+  async fn satributes(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Satribute>>, ApiError> {
+    let satributes = Self::get_satributes(server_config.deadpool, sat).await.map_err(|error| {
+      log::warn!("Error getting /satributes: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving satributes for {}", sat))
+    })?;
+    Ok(Json(satributes))
   }
 
   async fn collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
