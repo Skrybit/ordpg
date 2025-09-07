@@ -266,7 +266,7 @@ pub struct InscriptionBlockStats {
   block_volume: Option<i64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct CombinedBlockStats {
   block_number: i64,
   block_hash: Option<String>,
@@ -286,7 +286,7 @@ pub struct CombinedBlockStats {
   block_volume: Option<i64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct SatBlockStats {
   sat_block_number: i64,
   sat_block_timestamp: Option<i64>,
@@ -413,7 +413,7 @@ pub struct RandomInscriptionBand {
   end: f64
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct TrendingItemActivity {
   ids: Vec<String>,
   block_age: i64,
@@ -426,7 +426,7 @@ pub struct TrendingItemActivity {
   band_id: i64
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct DiscoverItemActivity {
   ids: Vec<String>,
   block_age: i64,
@@ -441,13 +441,13 @@ pub struct DiscoverItemActivity {
   class_band_end: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct TrendingItem {
   activity: TrendingItemActivity,
   inscriptions: Vec<FullMetadata>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct DiscoverItem {
   activity: DiscoverItemActivity,
   inscriptions: Vec<FullMetadata>
@@ -528,7 +528,7 @@ pub struct CollectionSummary {
   total_on_chain_footprint: Option<i64>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct CollectionHolders {
   collection_symbol: String, 
   collection_holder_count: Option<i64>,
@@ -536,7 +536,7 @@ pub struct CollectionHolders {
   address_count: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct InscriptionCollectionData {
   id: String,
   number: i64,
@@ -573,7 +573,7 @@ pub struct OnChainCollectionSummary {
   total_on_chain_footprint: Option<i64>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct OnChainCollectionHolders {
   parents: Vec<String>,
   parent_numbers: Vec<i64>,
@@ -621,7 +621,7 @@ pub struct FullMetadata {
   collection_name: Option<String>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct BoostFullMetadata {  
   sequence_number: i64,
   id: String,
@@ -662,13 +662,13 @@ pub struct BoostFullMetadata {
   bootleg_edition: Option<i64>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct LeaderboardEntry {
   address: String,
   count: i64
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct SearchResult {
   collections: Vec<CollectionSummary>,
   inscription: Option<FullMetadata>,
@@ -3938,23 +3938,20 @@ impl Vermilion {
     Ok(params)
   }
 
-  async fn home(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn home(State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content(server_config.deadpool,  "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0".to_string()).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
         log::warn!("Error getting /home: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving 6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0"),
-        ).into_response();
+        return Err(ApiError::InternalServerError(format!("Error retrieving 6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0")));
       }
     };
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
-    (
+    Ok((
         ([(axum::http::header::CONTENT_TYPE, content_type)]),
         bytes,
-    ).into_response()
+    ))
   }
 
   async fn set_header<B>(response: Response<B>) -> Response<B> {
@@ -3962,21 +3959,15 @@ impl Vermilion {
     response
   }
 
-  async fn inscription(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn inscription(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content(server_config.deadpool, inscription_id.to_string()).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
         log::warn!("Error getting /inscription: {}", error);
         if error.to_string().contains("unexpected number of rows"){
-          return (
-            StatusCode::NOT_FOUND,
-            format!("Inscription not found {}", inscription_id.to_string()),
-          ).into_response();
+          return Err(ApiError::NotFound(format!("Inscription not found {}", inscription_id.to_string())));
         } else {
-          return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error retrieving {}", inscription_id.to_string()),
-          ).into_response();
+          return Err(ApiError::InternalServerError(format!("Error retrieving {}", inscription_id.to_string())));
         }
       }
     };
@@ -3996,18 +3987,15 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    (header_map, bytes).into_response()
+    Ok((header_map, bytes))
   }
 
-  async fn inscription_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn inscription_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content_by_number(server_config.deadpool,  number).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
         log::warn!("Error getting /inscription_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving {}", number.to_string()),
-        ).into_response();
+        return Err(ApiError::InternalServerError(format!("Error retrieving {}", number.to_string())));
       }
     };
     let bytes = content_blob.content;
@@ -4026,18 +4014,15 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    (header_map, bytes).into_response()
+    Ok((header_map, bytes))
   }
 
-  async fn inscription_sha256(Path(sha256): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn inscription_sha256(Path(sha256): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content_by_sha256(server_config.deadpool, sha256.clone(), None, None).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
         log::warn!("Error getting /inscription_sha256: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscription by sha256: {}", sha256),
-        ).into_response();
+        return Err(ApiError::InternalServerError(format!("Error retrieving inscription by sha256: {}", sha256)));
       }
     };
     let bytes = content_blob.content;
@@ -4056,7 +4041,7 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    (header_map, bytes).into_response()
+    Ok((header_map, bytes))
   }
 
   async fn inscription_metadata(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
@@ -4195,24 +4180,16 @@ impl Vermilion {
     Ok(Json(delegates))
   }
 
-  async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let content_blob = match Self::get_ordinal_comment(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(content_blob) => content_blob,
-      Err(error) => {
+  async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_ordinal_comment(server_config.deadpool, inscription_id.to_string()).await
+      .map_err(|error| {
         log::warn!("Error getting /comment: {}", error);
         if error.to_string().contains("unexpected number of rows") || error.to_string().contains("not found") {
-          return (
-            StatusCode::NOT_FOUND,
-            format!("Comment not found {}", inscription_id.to_string()),
-          ).into_response();
+          ApiError::NotFound(format!("Comment not found {}", inscription_id.to_string()))
         } else {
-          return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error retrieving {}", inscription_id.to_string()),
-          ).into_response();
+          ApiError::InternalServerError(format!("Error retrieving {}", inscription_id.to_string()))
         }
-      }
-    };
+      })?;
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
     let content_encoding = content_blob.content_encoding;
@@ -4229,27 +4206,19 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    (header_map, bytes).into_response()
+    Ok((header_map, bytes).into_response())
   }
 
-  async fn comment_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let content_blob = match Self::get_ordinal_comment_by_number(server_config.deadpool,  number).await {
-      Ok(content_blob) => content_blob,
-      Err(error) => {
+  async fn comment_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_ordinal_comment_by_number(server_config.deadpool,  number).await
+      .map_err(|error| {
         log::warn!("Error getting /comment_number: {}", error);
         if error.to_string().contains("unexpected number of rows") || error.to_string().contains("not found") {
-          return (
-            StatusCode::NOT_FOUND,
-            format!("Comment not found {}", number),
-          ).into_response();
+          ApiError::NotFound(format!("Comment not found {}", number))
         } else {
-          return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error retrieving {}", number),
-          ).into_response();
+          ApiError::InternalServerError(format!("Error retrieving {}", number))
         }
-      }
-    };
+      })?;
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
     let content_encoding = content_blob.content_encoding;
@@ -4266,7 +4235,7 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    (header_map, bytes).into_response()
+    Ok((header_map, bytes).into_response())
   }
 
   async fn inscription_satribute_editions(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<SatributeEdition>>, ApiError> {
@@ -4297,23 +4266,15 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn random_inscription(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn random_inscription(State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let random_float = rng.gen::<f64>();
-    let (inscription_number, _band) = match Self::get_random_inscription(server_config.deadpool, random_float).await {
-      Ok((inscription_number, band)) => (inscription_number, band),
-      Err(error) => {
+    let (inscription_number, _band) = Self::get_random_inscription(server_config.deadpool, random_float).await
+      .map_err(|error| {
         log::warn!("Error getting /random_inscription: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving random inscription"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscription_number),
-    ).into_response()
+        ApiError::InternalServerError("Error retrieving random inscription".to_string())
+      })?;
+    Ok(Json(inscription_number))
   }
 
   async fn random_inscriptions(
@@ -4349,146 +4310,92 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn recent_boosts(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn recent_boosts(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<BoostFullMetadata>>, ApiError> {
     let n = n.0.n.unwrap_or(20) as i64;
-    let boosts = match Self::get_recent_boosts(server_config.deadpool, n).await {
-      Ok(boosts) => boosts,
-      Err(error) => {
-        log::warn!("Error getting /recent_boosts: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving recent boosts"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(boosts),
-    ).into_response()
+    let boosts = Self::get_recent_boosts(server_config.deadpool, n).await.map_err(|error| {
+      log::warn!("Error getting /recent_boosts: {}", error);
+      ApiError::InternalServerError("Error retrieving recent boosts".to_string())
+    })?;
+    Ok(Json(boosts))
   }
 
-  async fn boost_leaderboard(State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let leaderboard = match Self::get_boost_leaderboard(server_config.deadpool).await {
-      Ok(leaderboard) => leaderboard,
-      Err(error) => {
-        log::warn!("Error getting /boost_leaderboard: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving boost leaderboard"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(leaderboard),
-    ).into_response()
+  async fn boost_leaderboard(State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<LeaderboardEntry>>, ApiError> {
+    let leaderboard = Self::get_boost_leaderboard(server_config.deadpool).await.map_err(|error| {
+      log::warn!("Error getting /boost_leaderboard: {}", error);
+      ApiError::InternalServerError("Error retrieving boost leaderboard".to_string())
+    })?;
+    Ok(Json(leaderboard))
   }
 
-  async fn trending_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, NoApi(session): NoApi<Session<SessionNullPool>>) -> impl IntoApiResponse {
+  async fn trending_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, NoApi(session): NoApi<Session<SessionNullPool>>) -> Result<Json<Vec<TrendingItem>>, ApiError> {
     let mut bands_seen: Vec<i64> = session.get("trending_bands_seen").unwrap_or(Vec::new());
     for band in bands_seen.iter() {
       log::debug!("Trending Band: {:?}", band);
     }
     let n = n.0.n.unwrap_or(20);
-    let trending_items = match Self::get_trending_feed_items(server_config.deadpool, n, bands_seen.clone()).await {
-      Ok(trending_items) => trending_items,
-      Err(error) => {
+    let trending_items = Self::get_trending_feed_items(server_config.deadpool, n, bands_seen.clone()).await
+      .map_err(|error| {
         log::warn!("Error getting /trending_feed: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving trending feed"),
-        ).into_response();
-      }
-    };
+        ApiError::InternalServerError("Error retrieving trending feed".to_string())
+      })?;
     let mut band_ids: Vec<i64> = trending_items
       .iter()
       .map(|item| item.activity.band_id)
       .collect();
     bands_seen.append(&mut band_ids);
     session.set("trending_bands_seen", bands_seen);
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(trending_items),
-    ).into_response()
+    Ok(Json(trending_items))
   }
 
-  async fn discover_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, NoApi(session): NoApi<Session<SessionNullPool>>) -> impl IntoApiResponse {
+  async fn discover_feed(n: Query<QueryNumber>, State(server_config): State<ApiServerConfig>, NoApi(session): NoApi<Session<SessionNullPool>>) -> Result<Json<Vec<DiscoverItem>>, ApiError> {
     let mut bands_seen: Vec<(f64, f64)> = session.get("discover_bands_seen").unwrap_or(Vec::new());
     for band in bands_seen.iter() {
       log::debug!("Discover Band: {:?}", band);
     }
     let n = n.0.n.unwrap_or(20);
-    let discover_items = match Self::get_discover_feed_items(server_config.deadpool, n, bands_seen.clone()).await {
-      Ok(discover_items) => discover_items,
-      Err(error) => {
+    let discover_items = Self::get_discover_feed_items(server_config.deadpool, n, bands_seen.clone()).await
+      .map_err(|error| {
         log::warn!("Error getting /discover_feed: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving discover feed"),
-        ).into_response();
-      }
-    };
+        ApiError::InternalServerError("Error retrieving discover feed".to_string())
+      })?;
     let mut band_tuples: Vec<(f64, f64)> = discover_items
       .iter()
       .map(|item| (item.activity.class_band_start, item.activity.class_band_end))
       .collect();
     bands_seen.append(&mut band_tuples);
     session.set("discover_bands_seen", bands_seen);
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(discover_items),
-    ).into_response()
+    Ok(Json(discover_items))
   }
 
-  async fn inscriptions(params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn inscriptions(params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     //1. parse params
     let params = ParsedInscriptionQueryParams::from(params.0);
     //2. validate params
     for content_type in &params.content_types {
       if !["text", "image", "gif", "audio", "video", "html", "json", "namespace"].contains(&content_type.as_str()) {
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Invalid content_type: {}", content_type),
-        ).into_response();
+        return Err(ApiError::BadRequest(format!("Invalid content_type: {}", content_type)));
       }
     }
     for satribute in &params.satributes {
       if !["vintage", "nakamoto", "firsttransaction", "palindrome", "pizza", "block9", "block9_450", "block78", "alpha", "omega", "uniform_palinception", "perfect_palinception", "block286", "jpeg", 
            "uncommon", "rare", "epic", "legendary", "mythic", "black_uncommon", "black_rare", "black_epic", "black_legendary"].contains(&satribute.as_str()) {
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Invalid satribute: {}", satribute),
-        ).into_response();
+        return Err(ApiError::BadRequest(format!("Invalid satribute: {}", satribute)));
       }
     }
     for charm in &params.charms {
       if !["coin", "cursed", "epic", "legendary", "lost", "nineball", "rare", "reinscription", "unbound", "uncommon", "vindicated"].contains(&charm.as_str()) {
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Invalid charm: {}", charm),
-        ).into_response();
+        return Err(ApiError::BadRequest(format!("Invalid charm: {}", charm)));
       }
     }
     if !["newest", "oldest", "newest_sat", "oldest_sat", "rarest_sat", "commonest_sat", "biggest", "smallest", "highest_fee", "lowest_fee"].contains(&params.sort_by.as_str()) {
-      return (
-        StatusCode::BAD_REQUEST,
-        format!("Invalid sort_by: {}", params.sort_by),
-      ).into_response();
+      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", params.sort_by)));
     }
-    let inscriptions = match Self::get_inscriptions(server_config.deadpool, params).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
+    let inscriptions = Self::get_inscriptions(server_config.deadpool, params).await
+      .map_err(|error| {
         log::warn!("Error getting /inscriptions: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+        ApiError::InternalServerError("Error retrieving inscriptions".to_string())
+      })?;
+    Ok(Json(inscriptions))
   }
 
   async fn inscription_last_transfer(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Transfer>, ApiError> {
@@ -4535,48 +4442,24 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn inscriptions_on_sat(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let inscriptions: Vec<FullMetadata> = match Self::get_inscriptions_on_sat(server_config.deadpool, sat).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_on_sat: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions for {}", sat),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+  async fn inscriptions_on_sat(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let inscriptions = Self::get_inscriptions_on_sat(server_config.deadpool, sat).await.map_err(|error| {
+      log::warn!("Error getting /inscriptions_on_sat: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", sat))
+    })?;
+    Ok(Json(inscriptions))
   }
 
-  async fn inscriptions_in_sat_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_in_collection: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let inscriptions = match Self::get_inscriptions_in_sat_block(server_config.deadpool, block, parsed_params).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
-        log::warn!("Error getting /inscriptions_in_sat_block: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions for {}", block),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+  async fn inscriptions_in_sat_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
+      log::warn!("Error getting /inscriptions_in_sat_block: {}", error);
+      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+    })?;
+    let inscriptions = Self::get_inscriptions_in_sat_block(server_config.deadpool, block, parsed_params).await.map_err(|error| {
+      log::warn!("Error getting /inscriptions_in_sat_block: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", block))
+    })?;
+    Ok(Json(inscriptions))
   }
 
   async fn sat_metadata(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatMetadata>, ApiError> {
@@ -4595,7 +4478,7 @@ impl Vermilion {
     Ok(Json(satributes))
   }
 
-  async fn collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CollectionSummary>>, ApiError> {
     //1. parse params
     let params = params.0;
     let sort_by = params.clone().sort_by.unwrap_or("biggest_on_chain_footprint".to_string());
@@ -4609,123 +4492,65 @@ impl Vermilion {
       "earliest_last_inscribed_date", "latest_last_inscribed_date",
       "biggest_supply", "smallest_supply",
     ].contains(&sort_by.as_str()) {
-      return (
-        StatusCode::BAD_REQUEST,
-        format!("Invalid sort_by: {}", sort_by),
-      ).into_response();
+      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", sort_by)));
     }
-    let collections = match Self::get_collections(server_config.deadpool, params).await {
-      Ok(collections) => collections,
-      Err(error) => {
+    let collections = Self::get_collections(server_config.deadpool, params).await
+      .map_err(|error| {
         log::warn!("Error getting /collections: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving collections"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collections),
-    ).into_response()
+        ApiError::InternalServerError("Error retrieving collections".to_string())
+      })?;
+    Ok(Json(collections))
   }
 
-  async fn collection_summary(Path(collection_symbol): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let collection_summary = match Self::get_collection_summary(server_config.deadpool, collection_symbol.clone()).await {
-      Ok(collection_summary) => collection_summary,
-      Err(error) => {
-        log::warn!("Error getting /collection_summary: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving collection summary for {}", collection_symbol),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collection_summary),
-    ).into_response()
+  async fn collection_summary(Path(collection_symbol): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<CollectionSummary>, ApiError> {
+    let collection_summary = Self::get_collection_summary(server_config.deadpool, collection_symbol.clone()).await.map_err(|error| {
+      log::warn!("Error getting /collection_summary: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving collection summary for {}", collection_symbol))
+    })?;
+    Ok(Json(collection_summary))
   }
 
-  async fn collection_holders(Path(collection_symbol): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let collection_holders = match Self::get_collection_holders(server_config.deadpool, collection_symbol.clone(), params.0).await {
-      Ok(collection_holders) => collection_holders,
-      Err(error) => {
-        log::warn!("Error getting /collection_holders: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving collection_holders summary for {}", collection_symbol),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collection_holders),
-    ).into_response()
+  async fn collection_holders(Path(collection_symbol): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CollectionHolders>>, ApiError> {
+    let collection_holders = Self::get_collection_holders(server_config.deadpool, collection_symbol.clone(), params.0).await.map_err(|error| {
+      log::warn!("Error getting /collection_holders: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving collection_holders for {}", collection_symbol))
+    })?;
+    Ok(Json(collection_holders))
   }
 
-  async fn inscription_collection_data(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let collection_data = match Self::get_inscription_collection_data(server_config.deadpool, inscription_id.to_string()).await {
-      Ok(collection_data) => collection_data,
-      Err(error) => {
+  async fn inscription_collection_data(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionCollectionData>>, ApiError> {
+    let collection_data = Self::get_inscription_collection_data(server_config.deadpool, inscription_id.to_string()).await
+      .map_err(|error| {
         log::warn!("Error getting /collection_data_by_inscription_id: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving collection data for {}", inscription_id.to_string()),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collection_data),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving collection data for {}", inscription_id.to_string()))
+      })?;
+    Ok(Json(collection_data))
   }
 
-  async fn inscription_collection_data_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let collection_data = match Self::get_inscription_collection_data_number(server_config.deadpool, number).await {
-      Ok(collection_data) => collection_data,
-      Err(error) => {
+  async fn inscription_collection_data_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionCollectionData>>, ApiError> {
+    let collection_data = Self::get_inscription_collection_data_number(server_config.deadpool, number).await
+      .map_err(|error| {
         log::warn!("Error getting /collection_data_by_inscription_number: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving collection data for {}", number),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collection_data),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving collection data for {}", number))
+      })?;
+    Ok(Json(collection_data))
   }
 
-  async fn inscriptions_in_collection(Path(collection_symbol): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
+  async fn inscriptions_in_collection(Path(collection_symbol): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0)
+      .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_collection: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let inscriptions = match Self::get_inscriptions_in_collection(server_config.deadpool, collection_symbol, parsed_params).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
+        ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+      })?;
+    let inscriptions = Self::get_inscriptions_in_collection(server_config.deadpool, collection_symbol, parsed_params).await
+      .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_collection: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions in collection"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+        ApiError::InternalServerError("Error retrieving inscriptions in collection".to_string())
+      })?;
+    Ok(Json(inscriptions))
   }
 
-  async fn on_chain_collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn on_chain_collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<OnChainCollectionSummary>>, ApiError> {
     //1. parse params
     let params = params.0;
     let sort_by = params.clone().sort_by.unwrap_or("biggest_on_chain_footprint".to_string());
@@ -4739,126 +4564,69 @@ impl Vermilion {
       "earliest_last_inscribed_date", "latest_last_inscribed_date",
       "biggest_supply", "smallest_supply",
     ].contains(&sort_by.as_str()) {
-      return (
-        StatusCode::BAD_REQUEST,
-        format!("Invalid sort_by: {}", sort_by),
-      ).into_response();
+      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", sort_by)));
     }
-    let collections = match Self::get_on_chain_collections(server_config.deadpool, params).await {
-      Ok(collections) => collections,
-      Err(error) => {
+    let collections = Self::get_on_chain_collections(server_config.deadpool, params).await
+      .map_err(|error| {
         log::warn!("Error getting /on_chain_collections: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving on chain collections"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collections),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving on chain collections"))
+      })?;
+    Ok(Json(collections))
   }
 
-  async fn on_chain_collection_summary(Path(parents): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn on_chain_collection_summary(Path(parents): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<OnChainCollectionSummary>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
-    let collection_summary = match Self::get_on_chain_collection_summary(server_config.deadpool, parents_vec.clone()).await {
-      Ok(collection_summary) => collection_summary,
-      Err(error) => {
+    let collection_summary = Self::get_on_chain_collection_summary(server_config.deadpool, parents_vec.clone()).await
+      .map_err(|error| {
         log::warn!("Error getting /on_chain_collection_summary: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving on chain collection summary for {}", parents),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collection_summary),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving on chain collection summary for {}", parents))
+      })?;
+    Ok(Json(collection_summary))
   }
 
-  async fn on_chain_collection_holders(Path(parents): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn on_chain_collection_holders(Path(parents): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<OnChainCollectionHolders>>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
-    let collection_holders = match Self::get_on_chain_collection_holders(server_config.deadpool, parents_vec.clone(), params.0).await {
-      Ok(collection_holders) => collection_holders,
-      Err(error) => {
+    let collection_holders = Self::get_on_chain_collection_holders(server_config.deadpool, parents_vec.clone(), params.0).await
+      .map_err(|error| {
         log::warn!("Error getting /on_chain_collection_holders: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving on_chain_collection_holders summary for {}", parents),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(collection_holders),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving on_chain_collection_holders summary for {}", parents))
+      })?;
+    Ok(Json(collection_holders))
   }
 
-  async fn inscriptions_in_on_chain_collection(Path(parents): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn inscriptions_in_on_chain_collection(Path(parents): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
-    let parsed_params = match Self::parse_and_validate_inscription_params(params.0) {
-      Ok(parsed_params) => parsed_params,
-      Err(error) => {
+    let parsed_params = Self::parse_and_validate_inscription_params(params.0)
+      .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_on_chain_collection: {}", error);
-        return (
-          StatusCode::BAD_REQUEST,
-          format!("Error parsing and validating params: {}", error),
-        ).into_response();
-      }
-    };
-    let inscriptions = match Self::get_inscriptions_in_on_chain_collection(server_config.deadpool, parents_vec, parsed_params).await {
-      Ok(inscriptions) => inscriptions,
-      Err(error) => {
+        ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
+      })?;
+    let inscriptions = Self::get_inscriptions_in_on_chain_collection(server_config.deadpool, parents_vec, parsed_params).await
+      .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_on_chain_collection: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving inscriptions in on chain collection"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(inscriptions),
-    ).into_response()
+        ApiError::InternalServerError("Error retrieving inscriptions in on chain collection".to_string())
+      })?;
+    Ok(Json(inscriptions))
   }
 
-  async fn block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let block_stats = match Self::get_block_statistics(server_config.deadpool, block).await {
-      Ok(block_stats) => block_stats,
-      Err(error) => {
-        log::warn!("Error getting /block_statistics: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving block statistics for {}", block),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(block_stats),
-    ).into_response()
+  async fn block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<CombinedBlockStats>, ApiError> {
+    let block_stats = Self::get_block_statistics(server_config.deadpool, block).await.map_err(|error| {
+      log::warn!("Error getting /block_statistics: {}", error);
+      ApiError::InternalServerError(format!("Error retrieving block statistics for {}", block))
+    })?;
+    Ok(Json(block_stats))
   }
 
-  async fn sat_block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let block_stats = match Self::get_sat_block_statistics(server_config.deadpool, block).await {
-      Ok(block_stats) => block_stats,
-      Err(error) => {
+  async fn sat_block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatBlockStats>, ApiError> {
+    let block_stats = Self::get_sat_block_statistics(server_config.deadpool, block).await
+      .map_err(|error| {
         log::warn!("Error getting /sat_block_statistics: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving sat block statistics for {}", block),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(block_stats),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving sat block statistics for {}", block))
+      })?;
+    Ok(Json(block_stats))
   }
 
-  async fn blocks(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
+  async fn blocks(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CombinedBlockStats>>, ApiError> {
     //1. parse params
     let params = params.0;
     let sort_by = params.clone().sort_by.unwrap_or("newest".to_string());
@@ -4872,163 +4640,100 @@ impl Vermilion {
       "highest_total_fees", "lowest_total_fees",
       "highest_inscription_fees", "lowest_inscription_fees",
       "most_volume", "least_volume"].contains(&sort_by.as_str()) {
-      return (
-        StatusCode::BAD_REQUEST,
-        format!("Invalid sort_by: {}", sort_by),
-      ).into_response();
+      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", sort_by)));
     }
-    let blocks = match Self::get_blocks(server_config.deadpool, params).await {
-      Ok(blocks) => blocks,
-      Err(error) => {
+    let blocks = Self::get_blocks(server_config.deadpool, params).await
+      .map_err(|error| {
         log::warn!("Error getting /blocks: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving blocks"),
-        ).into_response();
-      }
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(blocks),
-    ).into_response()
+        ApiError::InternalServerError("Error retrieving blocks".to_string())
+      })?;
+    Ok(Json(blocks))
   }
 
-  async fn search_by_query(Path(search_query): Path<String>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let search_result = match Self::get_search_result(server_config.deadpool, search_query.clone()).await {
-      Ok(search_result) => search_result,
-      Err(error) => {
+  async fn search_by_query(Path(search_query): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<SearchResult>, ApiError> {
+    let search_result = Self::get_search_result(server_config.deadpool, search_query.clone()).await
+      .map_err(|error| {
         log::warn!("Error getting /search_by_query: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving search results for {}", search_query),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(search_result),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving search results for {}", search_query))
+      })?;
+    Ok(Json(search_result))
   }
 
-  async fn block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let content_blob = match Self::get_block_icon(server_config.deadpool,  block).await {
-      Ok(content_blob) => content_blob,
-      Err(error) => {
+  async fn block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_block_icon(server_config.deadpool,  block).await
+      .map_err(|error| {
         log::warn!("Error getting /block_icon: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving block icon {}", block.to_string()),
-        ).into_response();
-      }
-    };
+        ApiError::InternalServerError(format!("Error retrieving block icon {}", block.to_string()))
+      })?;
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
-    (
+    Ok((
       ([(axum::http::header::CONTENT_TYPE, content_type),
         (axum::http::header::CACHE_CONTROL, "public, max-age=31536000".to_string())]),
       bytes,
-    ).into_response()
+    ).into_response())
   }
 
-  async fn sat_block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let content_blob = match Self::get_sat_block_icon(server_config.deadpool,  block).await {
-      Ok(content_blob) => content_blob,
-      Err(error) => {
+  async fn sat_block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_sat_block_icon(server_config.deadpool,  block).await
+      .map_err(|error| {
         log::warn!("Error getting /block_icon: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving block icon {}", block.to_string()),
-        ).into_response();
-      }
-    };
+        ApiError::InternalServerError(format!("Error retrieving block icon {}", block.to_string()))
+      })?;
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
-    (
+    Ok((
       ([(axum::http::header::CONTENT_TYPE, content_type),
         (axum::http::header::CACHE_CONTROL, "public, max-age=31536000".to_string())]),
       bytes,
-    ).into_response()
+    ).into_response())
   }
 
-  async fn block_transfers(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> impl IntoApiResponse {
-    let transfers = match Self::get_block_transfers(server_config.deadpool, block).await {
-      Ok(transfers) => transfers,
-      Err(error) => {
+  async fn block_transfers(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
+    let transfers = Self::get_block_transfers(server_config.deadpool, block).await
+      .map_err(|error| {
         log::warn!("Error getting /block_transfers: {}", error);
-        return (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          format!("Error retrieving transfers for block {}", block),
-        ).into_response();
-      }    
-    };
-    (
-      ([(axum::http::header::CONTENT_TYPE, "application/json")]),
-      Json(transfers),
-    ).into_response()
+        ApiError::InternalServerError(format!("Error retrieving transfers for block {}", block))
+      })?;
+    Ok(Json(transfers))
   }
 
-  async fn submit_package(State(server_config): State<ApiServerConfig>, Json(payload): Json<Vec<String>>) -> impl IntoApiResponse {
+  async fn submit_package(State(server_config): State<ApiServerConfig>, Json(payload): Json<Vec<String>>) -> Result<Json<Vec<String>>, ApiError> {
     // function should extract signed hex txs from the request body
     // and submit them using the bitcoin client
     // and return the txids
     let bitcoin_client = server_config.bitcoin_rpc_client;
     println!("Submitting package with tx_hexs: {:?}", payload);
-    match bitcoin_client.call::<serde_json::Value>("submitpackage", &[serde_json::to_value(payload.clone()).unwrap()]) {
-      Ok(rpc_response) => {
-        println!("Success: RPC response: {:?}", rpc_response);
-        // Return successful response with the transaction IDs
-        let mut txids = Vec::new();
-        if let Some(tx_results) = rpc_response.get("tx-results").and_then(|v| v.as_object()) {
-          for (_wtxid, tx_data) in tx_results {
-            if let Some(txid) = tx_data.get("txid").and_then(|v| v.as_str()) {
-              txids.push(txid.to_string());
-            }
-          }
-        }
-        if txids.len() < payload.len() {
-          log::warn!("Not all transactions were captured successfully. Expected: {}, Got: {}", payload.len(), txids.len());
-        }
-        (
-          StatusCode::OK,
-          [(axum::http::header::CONTENT_TYPE, "application/json")],
-          Json(txids)
-        ).into_response()
-      },
-      Err(error) => {
-        // Log the error and return an appropriate error response
+    let rpc_response = bitcoin_client.call::<serde_json::Value>("submitpackage", &[serde_json::to_value(payload.clone()).unwrap()])
+      .map_err(|error| {
         log::warn!("Error submitting transaction package: {}", error);
-        (
-          StatusCode::BAD_REQUEST,
-          [(axum::http::header::CONTENT_TYPE, "application/json")],
-          Json(serde_json::json!({
-            "error": error.to_string()
-          }))
-        ).into_response()
+        ApiError::BadRequest(error.to_string())
+      })?;
+
+    println!("Success: RPC response: {:?}", rpc_response);
+    // Return successful response with the transaction IDs
+    let mut txids = Vec::new();
+    if let Some(tx_results) = rpc_response.get("tx-results").and_then(|v| v.as_object()) {
+      for (_wtxid, tx_data) in tx_results {
+        if let Some(txid) = tx_data.get("txid").and_then(|v| v.as_str()) {
+          txids.push(txid.to_string());
+        }
       }
     }
+    if txids.len() < payload.len() {
+      log::warn!("Not all transactions were captured successfully. Expected: {}, Got: {}", payload.len(), txids.len());
+    }
+    Ok(Json(txids))
   }
 
-  async fn get_raw_transaction(State(server_config): State<ApiServerConfig>, Path(txid): Path<TxidParam>) -> impl IntoApiResponse {
+  async fn get_raw_transaction(State(server_config): State<ApiServerConfig>, Path(txid): Path<TxidParam>) -> Result<Json<serde_json::Value>, ApiError> {
     let bitcoin_client = server_config.bitcoin_rpc_client;
-    match bitcoin_client.get_raw_transaction_info(&txid.0, None) {
-      Ok(tx) => {
-        (
-          StatusCode::OK,
-          [(axum::http::header::CONTENT_TYPE, "application/json")],
-          Json(tx)
-        ).into_response()
-      },
-      Err(error) => {
+    let tx = bitcoin_client.get_raw_transaction_info(&txid.0, None)
+      .map_err(|error| {
         log::warn!("Error getting raw transaction: {}", error);
-        (
-          StatusCode::BAD_REQUEST,
-          [(axum::http::header::CONTENT_TYPE, "application/json")],
-          Json(serde_json::json!({
-            "error": error.to_string()
-          }))
-        ).into_response()
-      }
-    }
+        ApiError::BadRequest(error.to_string())
+      })?;
+    Ok(Json(serde_json::to_value(tx).unwrap()))
   }
 
   //DB functions
