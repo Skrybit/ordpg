@@ -6,8 +6,7 @@ use social::initialize_social_tables;
 use social_api::social_router;
 use crate::subcommand::server;
 use crate::index::fetcher::Fetcher;
-use crate::subcommand::vermilion::api::TxidParam;
-use crate::subcommand::vermilion::api::{serve_openapi, ApiError};
+use crate::subcommand::vermilion::api::{TxidParam, serve_openapi, serve_scalar, ApiError};
 use crate::Charm;
 
 use tokio::task::JoinSet;
@@ -29,14 +28,13 @@ use axum::{
   Extension,
 };
 use axum_session::{Session, SessionNullPool, SessionConfig, SessionStore, SessionLayer};
-use aide::{  
-  axum::{  
+use aide::{
+  axum::{
     routing::get,
-    routing::post, 
-    ApiRouter, IntoApiResponse,  
-  },  
-  openapi::OpenApi,  
-  scalar::Scalar,
+    routing::post,
+    ApiRouter, IntoApiResponse,
+  },
+  openapi::OpenApi,
   NoApi
 };
 use schemars::JsonSchema;
@@ -910,7 +908,7 @@ impl Vermilion {
           .api_route("/submit_package", post(Self::submit_package))
           .api_route("/get_raw_transaction/{txid}", get(Self::get_raw_transaction))
           .api_route("/api.json", get(serve_openapi))
-          .api_route("/docs", Scalar::new("/api.json").axum_route())
+          .api_route("/docs", get(serve_scalar))
           .merge(social_router())
           .layer(map_response(Self::set_header))
           .layer(

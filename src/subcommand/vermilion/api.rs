@@ -1,12 +1,13 @@
 use std::borrow::Cow;
 
 use aide::{
-  axum::IntoApiResponse, generate::GenContext, openapi::{MediaType, OpenApi, Operation}, OperationOutput
+  axum::IntoApiResponse, generate::GenContext, openapi::{MediaType, OpenApi, Operation}, scalar::Scalar, OperationOutput
 };
 use axum::{
   http::StatusCode,
   response::{IntoResponse, Response},
   Extension, Json,
+  extract::OriginalUri,
 };
 use indexmap::IndexMap;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
@@ -16,6 +17,15 @@ use crate::InscriptionId;
 
 pub async fn serve_openapi(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
   Json(api)
+}
+
+pub async fn serve_scalar(OriginalUri(uri): OriginalUri) -> impl IntoApiResponse {
+  let spec_url = if uri.to_string().starts_with("/api/") {
+    "/api/api.json"
+  } else {
+    "/api.json"
+  };
+  axum::response::Html(Scalar::new(spec_url).html())
 }
 
 #[derive(Serialize, JsonSchema)]
