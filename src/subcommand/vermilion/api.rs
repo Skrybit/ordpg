@@ -7,7 +7,7 @@ use axum::{
   http::StatusCode,
   response::{IntoResponse, Response},
   Extension, Json,
-  extract::OriginalUri,
+  http::HeaderMap,
 };
 use indexmap::IndexMap;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
@@ -19,7 +19,10 @@ pub async fn serve_openapi(Extension(api): Extension<OpenApi>) -> impl IntoApiRe
   Json(api)
 }
 
-pub async fn serve_scalar(OriginalUri(uri): OriginalUri) -> impl IntoApiResponse {
+pub async fn serve_scalar(headers: HeaderMap) -> impl IntoApiResponse {
+  let uri = headers.get("X-Original-URI")
+    .and_then(|v| v.to_str().ok())
+    .unwrap_or("/docs");
   let spec_url = if uri.to_string().starts_with("/api/") {
     "/api/api.json"
   } else {
