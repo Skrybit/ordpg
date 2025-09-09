@@ -171,3 +171,201 @@ impl JsonSchema for TxidParam {
     })
   }
 }
+
+// Newtype wrappers for path parameters
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InscriptionNumber(pub i64);
+
+impl JsonSchema for InscriptionNumber {
+  fn schema_name() -> Cow<'static, str> {
+    "InscriptionNumber".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "number": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Inscription number identifier",
+          "example": 12345
+        }
+      },
+      "required": ["number"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BlockNumber(pub i64);
+
+impl JsonSchema for BlockNumber {
+  fn schema_name() -> Cow<'static, str> {
+    "BlockNumber".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "block": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Bitcoin block number",
+          "example": 800000
+        }
+      },
+      "required": ["block"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SatNumber(pub i64);
+
+impl JsonSchema for SatNumber {
+  fn schema_name() -> Cow<'static, str> {
+    "SatNumber".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "sat": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Satoshi number identifier",
+          "example": 1000000000
+        }
+      },
+      "required": ["sat"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Sha256Hash(pub String);
+
+impl JsonSchema for Sha256Hash {
+  fn schema_name() -> Cow<'static, str> {
+    "Sha256Hash".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "SHA256 hash: 64 hex characters",
+          "example": "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799"
+        }
+      },
+      "required": ["sha256"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BitcoinAddress(pub String);
+
+impl JsonSchema for BitcoinAddress {
+  fn schema_name() -> Cow<'static, str> {
+    "BitcoinAddress".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Bitcoin address",
+          "example": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+        }
+      },
+      "required": ["address"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CollectionSymbol(pub String);
+
+impl JsonSchema for CollectionSymbol {
+  fn schema_name() -> Cow<'static, str> {
+    "CollectionSymbol".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "collection_symbol": {
+          "type": "string",
+          "description": "Collection symbol identifier",
+          "example": "bitcoin-puppets"
+        }
+      },
+      "required": ["collection_symbol"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ParentList(pub String);
+
+impl JsonSchema for ParentList {
+  fn schema_name() -> Cow<'static, str> {
+    "ParentList".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "parents": {
+          "type": "string",
+          "description": "Parent inscription identifiers",
+          "example": "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0"
+        }
+      },
+      "required": ["parents"]
+    })
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SearchQuery(pub String);
+
+impl JsonSchema for SearchQuery {
+  fn schema_name() -> Cow<'static, str> {
+    "SearchQuery".into()
+  }
+
+  fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+      "type": "object",
+      "properties": {
+        "search_query": {
+          "type": "string",
+          "description": "Search query string",
+          "example": "bitcoin"
+        }
+      },
+      "required": ["search_query"]
+    })
+  }
+}

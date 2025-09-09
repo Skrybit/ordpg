@@ -6,7 +6,11 @@ use social::initialize_social_tables;
 use social_api::social_router;
 use crate::subcommand::server;
 use crate::index::fetcher::Fetcher;
-use crate::subcommand::vermilion::api::{TxidParam, serve_openapi, serve_scalar, ApiError};
+use crate::subcommand::vermilion::api::{
+  TxidParam, serve_openapi, serve_scalar, ApiError,
+  InscriptionNumber, BlockNumber, SatNumber, Sha256Hash, 
+  BitcoinAddress, CollectionSymbol, ParentList, SearchQuery
+};
 use crate::Charm;
 
 use tokio::task::JoinSet;
@@ -3963,9 +3967,9 @@ impl Vermilion {
       Err(error) => {
         log::warn!("Error getting /inscription: {}", error);
         if error.to_string().contains("unexpected number of rows"){
-          return Err(ApiError::NotFound(format!("Inscription not found {}", inscription_id.to_string())));
+          return Err(ApiError::NotFound(format!("Inscription not found {}", inscription_id)));
         } else {
-          return Err(ApiError::InternalServerError(format!("Error retrieving {}", inscription_id.to_string())));
+          return Err(ApiError::InternalServerError(format!("Error retrieving {}", inscription_id)));
         }
       }
     };
@@ -3988,12 +3992,12 @@ impl Vermilion {
     Ok((header_map, bytes))
   }
 
-  async fn inscription_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
-    let content_blob = match Self::get_ordinal_content_by_number(server_config.deadpool,  number).await {
+  async fn inscription_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = match Self::get_ordinal_content_by_number(server_config.deadpool, number).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
         log::warn!("Error getting /inscription_number: {}", error);
-        return Err(ApiError::InternalServerError(format!("Error retrieving {}", number.to_string())));
+        return Err(ApiError::InternalServerError(format!("Error retrieving {}", number)));
       }
     };
     let bytes = content_blob.content;
@@ -4015,7 +4019,7 @@ impl Vermilion {
     Ok((header_map, bytes))
   }
 
-  async fn inscription_sha256(Path(sha256): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn inscription_sha256(Path(Sha256Hash(sha256)): Path<Sha256Hash>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content_by_sha256(server_config.deadpool, sha256.clone(), None, None).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4050,10 +4054,10 @@ impl Vermilion {
     Ok(Json(metadata))
   }
 
-  async fn inscription_metadata_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
+  async fn inscription_metadata_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
     let metadata = Self::get_ordinal_metadata_by_number(server_config.deadpool, number).await.map_err(|error| {
       log::warn!("Error getting /inscription_metadata_number: {}", error);
-      ApiError::InternalServerError(format!("Error retrieving metadata for {}", number.to_string()))
+      ApiError::InternalServerError(format!("Error retrieving metadata for {}", number))
     })?;
     Ok(Json(metadata))
   }
@@ -4066,7 +4070,7 @@ impl Vermilion {
     Ok(Json(edition))
   }
 
-  async fn inscription_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<InscriptionNumberEdition>, ApiError> {
+  async fn inscription_edition_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<InscriptionNumberEdition>, ApiError> {
     let edition = Self::get_inscription_edition_number(server_config.deadpool, number).await.map_err(|error| {
       log::warn!("Error getting /inscription_edition_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving edition for {}", number))
@@ -4074,7 +4078,7 @@ impl Vermilion {
     Ok(Json(edition))
   }
 
-  async fn inscription_editions_sha256(Path(sha256): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionNumberEdition>>, ApiError> {
+  async fn inscription_editions_sha256(Path(Sha256Hash(sha256)): Path<Sha256Hash>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionNumberEdition>>, ApiError> {
     let editions = Self::get_matching_inscriptions_by_sha256(server_config.deadpool, sha256.clone(), params.0).await.map_err(|error| {
       log::warn!("Error getting /inscription_editions_sha256: {}", error);
       ApiError::InternalServerError(format!("Error retrieving editions for {}", sha256))
@@ -4094,7 +4098,7 @@ impl Vermilion {
     Ok(Json(editions))
   }
 
-  async fn inscription_children_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscription_children_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
       log::warn!("Error getting /inscription_children_number: {}", error);
       ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
@@ -4118,7 +4122,7 @@ impl Vermilion {
     Ok(Json(referenced_by))
   }
 
-  async fn inscription_referenced_by_number(Path(number): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscription_referenced_by_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
       log::warn!("Error getting /inscription_referenced_by_number: {}", error);
       ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
@@ -4138,7 +4142,7 @@ impl Vermilion {
     Ok(Json(delegates))
   }
 
-  async fn inscription_bootlegs_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<BootlegEdition>>, ApiError> {
+  async fn inscription_bootlegs_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<BootlegEdition>>, ApiError> {
     let delegates = Self::get_inscription_bootlegs_by_number(server_config.deadpool, number, params.0).await.map_err(|error| {
       log::warn!("Error getting /inscription_bootlegs_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving bootlegs for {}", number))
@@ -4154,7 +4158,7 @@ impl Vermilion {
     Ok(Json(edition))
   }
 
-  async fn bootleg_edition_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<BootlegEdition>, ApiError> {
+  async fn bootleg_edition_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<BootlegEdition>, ApiError> {
     let edition = Self::get_bootleg_edition_by_number(server_config.deadpool, number).await.map_err(|error| {
       log::warn!("Error getting /bootleg_edition_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving bootleg edition for {}", number))
@@ -4170,7 +4174,7 @@ impl Vermilion {
     Ok(Json(delegates))
   }
 
-  async fn inscription_comments_number(Path(number): Path<i64>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CommentEdition>>, ApiError> {
+  async fn inscription_comments_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CommentEdition>>, ApiError> {
     let delegates = Self::get_inscription_comments_by_number(server_config.deadpool, number, params.0).await.map_err(|error| {
       log::warn!("Error getting /inscription_comments_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving comments for {}", number))
@@ -4207,8 +4211,8 @@ impl Vermilion {
     Ok((header_map, bytes).into_response())
   }
 
-  async fn comment_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
-    let content_blob = Self::get_ordinal_comment_by_number(server_config.deadpool,  number).await
+  async fn comment_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_ordinal_comment_by_number(server_config.deadpool, number).await
       .map_err(|error| {
         log::warn!("Error getting /comment_number: {}", error);
         if error.to_string().contains("unexpected number of rows") || error.to_string().contains("not found") {
@@ -4244,7 +4248,7 @@ impl Vermilion {
     Ok(Json(editions))
   }
 
-  async fn inscription_satribute_editions_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<SatributeEdition>>, ApiError> {
+  async fn inscription_satribute_editions_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<SatributeEdition>>, ApiError> {
     let editions = Self::get_inscription_satribute_editions_by_number(server_config.deadpool, number).await.map_err(|error| {
       log::warn!("Error getting /inscription_satribute_editions_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving satribute editions for {}", number))
@@ -4252,14 +4256,14 @@ impl Vermilion {
     Ok(Json(editions))
   }
 
-  async fn inscriptions_in_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscriptions_in_block(Path(BlockNumber(block)): Path<BlockNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
       log::warn!("Error getting /inscriptions_in_block: {}", error);
       ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
     })?;
     let inscriptions = Self::get_inscriptions_within_block(server_config.deadpool, block, parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscriptions_in_block: {}", error);
-      ApiError::InternalServerError(format!("Error retrieving inscriptions for block {}", block.to_string()))
+      ApiError::InternalServerError(format!("Error retrieving inscriptions for block {}", block))
     })?;
     Ok(Json(inscriptions))
   }
@@ -4404,7 +4408,7 @@ impl Vermilion {
     Ok(Json(transfer))
   }
 
-  async fn inscription_last_transfer_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Transfer>, ApiError> {
+  async fn inscription_last_transfer_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Transfer>, ApiError> {
     let transfer = Self::get_last_ordinal_transfer_by_number(server_config.deadpool, number).await.map_err(|error| {
       log::warn!("Error getting /inscription_last_transfer_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving last transfer for {}", number))
@@ -4420,7 +4424,7 @@ impl Vermilion {
     Ok(Json(transfers))
   }
 
-  async fn inscription_transfers_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
+  async fn inscription_transfers_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
     let transfers = Self::get_ordinal_transfers_by_number(server_config.deadpool, number).await.map_err(|error| {
       log::warn!("Error getting /inscription_transfers_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving transfers for {}", number))
@@ -4428,19 +4432,19 @@ impl Vermilion {
     Ok(Json(transfers))
   }
 
-  async fn inscriptions_in_address(Path(address): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscriptions_in_address(Path(BitcoinAddress(address)): Path<BitcoinAddress>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
       log::warn!("Error getting /inscriptions_in_address: {}", error);
       ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
     })?;
     let inscriptions = Self::get_inscriptions_by_address(server_config.deadpool, address.clone(), parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscriptions_in_address: {}", error);
-      ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", address))
+      ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", &*address))
     })?;
     Ok(Json(inscriptions))
   }
 
-  async fn inscriptions_on_sat(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscriptions_on_sat(Path(SatNumber(sat)): Path<SatNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let inscriptions = Self::get_inscriptions_on_sat(server_config.deadpool, sat).await.map_err(|error| {
       log::warn!("Error getting /inscriptions_on_sat: {}", error);
       ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", sat))
@@ -4448,7 +4452,7 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn inscriptions_in_sat_block(Path(block): Path<i64>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscriptions_in_sat_block(Path(BlockNumber(block)): Path<BlockNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
       log::warn!("Error getting /inscriptions_in_sat_block: {}", error);
       ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
@@ -4460,7 +4464,7 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn sat_metadata(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatMetadata>, ApiError> {
+  async fn sat_metadata(Path(SatNumber(sat)): Path<SatNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatMetadata>, ApiError> {
     let sat_metadata = Self::get_sat_metadata(server_config.deadpool, sat).await.map_err(|error| {
       log::warn!("Error getting /sat_metadata: {}", error);
       ApiError::InternalServerError(format!("Error retrieving metadata for {}", sat))
@@ -4468,7 +4472,7 @@ impl Vermilion {
     Ok(Json(sat_metadata))
   }
 
-  async fn satributes(Path(sat): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Satribute>>, ApiError> {
+  async fn satributes(Path(SatNumber(sat)): Path<SatNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Satribute>>, ApiError> {
     let satributes = Self::get_satributes(server_config.deadpool, sat).await.map_err(|error| {
       log::warn!("Error getting /satributes: {}", error);
       ApiError::InternalServerError(format!("Error retrieving satributes for {}", sat))
@@ -4500,7 +4504,7 @@ impl Vermilion {
     Ok(Json(collections))
   }
 
-  async fn collection_summary(Path(collection_symbol): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<CollectionSummary>, ApiError> {
+  async fn collection_summary(Path(CollectionSymbol(collection_symbol)): Path<CollectionSymbol>, State(server_config): State<ApiServerConfig>) -> Result<Json<CollectionSummary>, ApiError> {
     let collection_summary = Self::get_collection_summary(server_config.deadpool, collection_symbol.clone()).await.map_err(|error| {
       log::warn!("Error getting /collection_summary: {}", error);
       ApiError::InternalServerError(format!("Error retrieving collection summary for {}", collection_symbol))
@@ -4508,7 +4512,7 @@ impl Vermilion {
     Ok(Json(collection_summary))
   }
 
-  async fn collection_holders(Path(collection_symbol): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CollectionHolders>>, ApiError> {
+  async fn collection_holders(Path(CollectionSymbol(collection_symbol)): Path<CollectionSymbol>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CollectionHolders>>, ApiError> {
     let collection_holders = Self::get_collection_holders(server_config.deadpool, collection_symbol.clone(), params.0).await.map_err(|error| {
       log::warn!("Error getting /collection_holders: {}", error);
       ApiError::InternalServerError(format!("Error retrieving collection_holders for {}", collection_symbol))
@@ -4525,7 +4529,7 @@ impl Vermilion {
     Ok(Json(collection_data))
   }
 
-  async fn inscription_collection_data_number(Path(number): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionCollectionData>>, ApiError> {
+  async fn inscription_collection_data_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<InscriptionCollectionData>>, ApiError> {
     let collection_data = Self::get_inscription_collection_data_number(server_config.deadpool, number).await
       .map_err(|error| {
         log::warn!("Error getting /collection_data_by_inscription_number: {}", error);
@@ -4534,13 +4538,13 @@ impl Vermilion {
     Ok(Json(collection_data))
   }
 
-  async fn inscriptions_in_collection(Path(collection_symbol): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscriptions_in_collection(Path(CollectionSymbol(collection_symbol)): Path<CollectionSymbol>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parsed_params = Self::parse_and_validate_inscription_params(params.0)
       .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_collection: {}", error);
         ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
       })?;
-    let inscriptions = Self::get_inscriptions_in_collection(server_config.deadpool, collection_symbol, parsed_params).await
+    let inscriptions = Self::get_inscriptions_in_collection(server_config.deadpool, collection_symbol.clone(), parsed_params).await
       .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_collection: {}", error);
         ApiError::InternalServerError("Error retrieving inscriptions in collection".to_string())
@@ -4572,7 +4576,7 @@ impl Vermilion {
     Ok(Json(collections))
   }
 
-  async fn on_chain_collection_summary(Path(parents): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<OnChainCollectionSummary>, ApiError> {
+  async fn on_chain_collection_summary(Path(ParentList(parents)): Path<ParentList>, State(server_config): State<ApiServerConfig>) -> Result<Json<OnChainCollectionSummary>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
     let collection_summary = Self::get_on_chain_collection_summary(server_config.deadpool, parents_vec.clone()).await
       .map_err(|error| {
@@ -4582,7 +4586,7 @@ impl Vermilion {
     Ok(Json(collection_summary))
   }
 
-  async fn on_chain_collection_holders(Path(parents): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<OnChainCollectionHolders>>, ApiError> {
+  async fn on_chain_collection_holders(Path(ParentList(parents)): Path<ParentList>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<OnChainCollectionHolders>>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
     let collection_holders = Self::get_on_chain_collection_holders(server_config.deadpool, parents_vec.clone(), params.0).await
       .map_err(|error| {
@@ -4592,7 +4596,7 @@ impl Vermilion {
     Ok(Json(collection_holders))
   }
 
-  async fn inscriptions_in_on_chain_collection(Path(parents): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+  async fn inscriptions_in_on_chain_collection(Path(ParentList(parents)): Path<ParentList>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
     let parsed_params = Self::parse_and_validate_inscription_params(params.0)
       .map_err(|error| {
@@ -4607,7 +4611,7 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<CombinedBlockStats>, ApiError> {
+  async fn block_statistics(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<CombinedBlockStats>, ApiError> {
     let block_stats = Self::get_block_statistics(server_config.deadpool, block).await.map_err(|error| {
       log::warn!("Error getting /block_statistics: {}", error);
       ApiError::InternalServerError(format!("Error retrieving block statistics for {}", block))
@@ -4615,7 +4619,7 @@ impl Vermilion {
     Ok(Json(block_stats))
   }
 
-  async fn sat_block_statistics(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatBlockStats>, ApiError> {
+  async fn sat_block_statistics(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<SatBlockStats>, ApiError> {
     let block_stats = Self::get_sat_block_statistics(server_config.deadpool, block).await
       .map_err(|error| {
         log::warn!("Error getting /sat_block_statistics: {}", error);
@@ -4648,7 +4652,7 @@ impl Vermilion {
     Ok(Json(blocks))
   }
 
-  async fn search_by_query(Path(search_query): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<SearchResult>, ApiError> {
+  async fn search_by_query(Path(SearchQuery(search_query)): Path<SearchQuery>, State(server_config): State<ApiServerConfig>) -> Result<Json<SearchResult>, ApiError> {
     let search_result = Self::get_search_result(server_config.deadpool, search_query.clone()).await
       .map_err(|error| {
         log::warn!("Error getting /search_by_query: {}", error);
@@ -4657,8 +4661,8 @@ impl Vermilion {
     Ok(Json(search_result))
   }
 
-  async fn block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
-    let content_blob = Self::get_block_icon(server_config.deadpool,  block).await
+  async fn block_icon(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_block_icon(server_config.deadpool, block).await
       .map_err(|error| {
         log::warn!("Error getting /block_icon: {}", error);
         ApiError::InternalServerError(format!("Error retrieving block icon {}", block.to_string()))
@@ -4672,8 +4676,8 @@ impl Vermilion {
     ).into_response())
   }
 
-  async fn sat_block_icon(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
-    let content_blob = Self::get_sat_block_icon(server_config.deadpool,  block).await
+  async fn sat_block_icon(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+    let content_blob = Self::get_sat_block_icon(server_config.deadpool, block).await
       .map_err(|error| {
         log::warn!("Error getting /block_icon: {}", error);
         ApiError::InternalServerError(format!("Error retrieving block icon {}", block.to_string()))
@@ -4687,7 +4691,7 @@ impl Vermilion {
     ).into_response())
   }
 
-  async fn block_transfers(Path(block): Path<i64>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
+  async fn block_transfers(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
     let transfers = Self::get_block_transfers(server_config.deadpool, block).await
       .map_err(|error| {
         log::warn!("Error getting /block_transfers: {}", error);
