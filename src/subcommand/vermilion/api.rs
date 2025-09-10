@@ -12,7 +12,7 @@ use axum::{
 use indexmap::IndexMap;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Serialize};
-use strum::Display;
+use strum::{Display, EnumString};
 
 use crate::InscriptionId;
 
@@ -60,7 +60,7 @@ impl OperationOutput for ContentResponse {
   }
 }
 
-#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[derive(Debug, Deserialize, JsonSchema, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum SatributeType {
@@ -90,7 +90,7 @@ pub enum SatributeType {
 }
 
 
-#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[derive(Debug, Deserialize, JsonSchema, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum CharmType {
@@ -108,7 +108,7 @@ pub enum CharmType {
 }
 
 
-#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[derive(Debug, Deserialize, JsonSchema, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ContentType {

@@ -368,19 +368,35 @@ pub struct QueryNumber {
   n: Option<u32>
 }
 
+fn deserialize_comma_separated_fromstr<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+  D: Deserializer<'de>,
+  T: std::str::FromStr,
+  T::Err: std::fmt::Display,
+{
+  let s = String::deserialize(deserializer)?;
+  s.split(',')
+    .map(|item| item.trim().parse::<T>())
+    .collect::<Result<Vec<T>, _>>()
+    .map_err(|e| serde::de::Error::custom(format!("Parse error: {}", e)))
+}
+
 #[derive(Deserialize, JsonSchema)]
 pub struct InscriptionQueryParams {
   /// Content types to filter by
   #[schemars(description = "Content types to filter inscriptions by")]
-  content_types: Option<Vec<ContentType>>,
+  #[serde(default, deserialize_with = "deserialize_comma_separated_fromstr")]
+  content_types: Vec<ContentType>,
   
   /// Satributes to filter by
   #[schemars(description = "Satributes to filter inscriptions by")]
-  satributes: Option<Vec<SatributeType>>,
+  #[serde(default, deserialize_with = "deserialize_comma_separated_fromstr")]
+  satributes: Vec<SatributeType>,
   
   /// Charms to filter by
   #[schemars(description = "Charms to filter inscriptions by")]
-  charms: Option<Vec<CharmType>>,
+  #[serde(default, deserialize_with = "deserialize_comma_separated_fromstr")]
+  charms: Vec<CharmType>,
   
   /// Sort order for the results
   #[schemars(description = "Sort order for inscription results")]
@@ -415,9 +431,9 @@ pub struct ParsedInscriptionQueryParams {
 impl From<InscriptionQueryParams> for ParsedInscriptionQueryParams {
   fn from(params: InscriptionQueryParams) -> Self {
       Self {
-        content_types: params.content_types.map_or(Vec::new(), |v| v.into_iter().map(|ct| ct.to_string()).collect()),
-        satributes: params.satributes.map_or(Vec::new(), |v| v.into_iter().map(|s| s.to_string()).collect()),
-        charms: params.charms.map_or(Vec::new(), |v| v.into_iter().map(|c| c.to_string()).collect()),
+        content_types: params.content_types.into_iter().map(|ct| ct.to_string()).collect(),
+        satributes: params.satributes.into_iter().map(|s| s.to_string()).collect(),
+        charms: params.charms.into_iter().map(|c| c.to_string()).collect(),
         sort_by: params.sort_by.map_or("newest".to_string(), |v| v.to_string()),
         page_number: params.page_number.map_or(0, |v| v),
         page_size: params.page_size.map_or(10, |v| std::cmp::min(v, 100)),

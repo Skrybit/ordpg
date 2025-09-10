@@ -87,7 +87,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "serde_qs",
+ "serde_qs 0.14.0",
  "thiserror 2.0.12",
  "tower-layer",
  "tower-service",
@@ -3160,6 +3160,7 @@ dependencies = [
  "serde-aux",
  "serde-hex",
  "serde_json",
+ "serde_qs 1.0.0-rc.3",
  "serde_with",
  "serde_yaml",
  "sha256",
@@ -4279,6 +4280,19 @@ dependencies = [
  "axum",
  "futures",
  "percent-encoding",
+ "serde",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "serde_qs"
+version = "1.0.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cb0b9062a400c31442e67d1f2b1e7746bebd691110ebee1b7d0c7293b04fab1"
+dependencies = [
+ "itoa",
+ "percent-encoding",
+ "ryu",
  "serde",
  "thiserror 2.0.12",
 ]
