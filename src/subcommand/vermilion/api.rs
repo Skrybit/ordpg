@@ -60,7 +60,7 @@ impl OperationOutput for ContentResponse {
   }
 }
 
-#[derive(Debug, Deserialize, JsonSchema, Display, EnumString)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum SatributeType {
@@ -89,8 +89,7 @@ pub enum SatributeType {
   BlackLegendary,
 }
 
-
-#[derive(Debug, Deserialize, JsonSchema, Display, EnumString)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum CharmType {
@@ -108,7 +107,7 @@ pub enum CharmType {
 }
 
 
-#[derive(Debug, Deserialize, JsonSchema, Display, EnumString)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ContentType {
@@ -537,4 +536,19 @@ impl JsonSchema for SearchQuery {
       "required": ["search_query"]
     })
   }
+}
+
+pub fn set_comma_separated_arrays(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+  op.parameter::<Vec<ContentType>, _>("content_types", |mut param| {
+    param.inner_mut().parameter_data_mut().explode = Some(false);
+    param
+  })
+  .parameter::<Vec<SatributeType>, _>("satributes", |mut param| {
+    param.inner_mut().parameter_data_mut().explode = Some(false);
+    param
+  })
+  .parameter::<Vec<CharmType>, _>("charms", |mut param| {
+    param.inner_mut().parameter_data_mut().explode = Some(false);
+    param
+  })
 }

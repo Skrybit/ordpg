@@ -10,7 +10,8 @@ use crate::subcommand::vermilion::api::{
   TxidParam, serve_openapi, serve_scalar, ApiError, ContentResponse,
   InscriptionNumber, BlockNumber, SatNumber, Sha256Hash, 
   BitcoinAddress, CollectionSymbol, ParentList, SearchQuery,
-  SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, BlockSortBy
+  SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, BlockSortBy,
+  set_comma_separated_arrays
 };
 use crate::Charm;
 
@@ -36,7 +37,7 @@ use axum_extra::extract::Query;
 use axum_session::{Session, SessionNullPool, SessionConfig, SessionStore, SessionLayer};
 use aide::{
   axum::{
-    routing::get,
+    routing::{get, get_with},
     routing::post,
     ApiRouter, IntoApiResponse,
   },
@@ -960,10 +961,10 @@ impl Vermilion {
           .api_route("/inscription_edition/{inscription_id}", get(Self::inscription_edition))
           .api_route("/inscription_edition_number/{number}", get(Self::inscription_edition_number))
           .api_route("/inscription_editions_sha256/{sha256}", get(Self::inscription_editions_sha256))          
-          .api_route("/inscription_children/{inscription_id}", get(Self::inscription_children))
-          .api_route("/inscription_children_number/{number}", get(Self::inscription_children_number))
-          .api_route("/inscription_referenced_by/{inscription_id}", get(Self::inscription_referenced_by))
-          .api_route("/inscription_referenced_by_number/{number}", get(Self::inscription_referenced_by_number))
+          .api_route("/inscription_children/{inscription_id}", get_with(Self::inscription_children, set_comma_separated_arrays))
+          .api_route("/inscription_children_number/{number}", get_with(Self::inscription_children_number, set_comma_separated_arrays))
+          .api_route("/inscription_referenced_by/{inscription_id}", get_with(Self::inscription_referenced_by, set_comma_separated_arrays))
+          .api_route("/inscription_referenced_by_number/{number}", get_with(Self::inscription_referenced_by_number, set_comma_separated_arrays))
           .api_route("/inscription_bootlegs/{inscription_id}", get(Self::inscription_bootlegs))
           .api_route("/inscription_bootlegs_number/{number}", get(Self::inscription_bootlegs_number))
           .api_route("/bootleg_edition/{inscription_id}", get(Self::bootleg_edition))
@@ -974,8 +975,8 @@ impl Vermilion {
           .api_route("/comment_number/{number}", get(Self::comment_number))
           .api_route("/inscription_satribute_editions/{inscription_id}", get(Self::inscription_satribute_editions))
           .api_route("/inscription_satribute_editions_number/{number}", get(Self::inscription_satribute_editions_number)) 
-          .api_route("/inscriptions_in_block/{block}", get(Self::inscriptions_in_block))
-          .api_route("/inscriptions", get(Self::inscriptions))
+          .api_route("/inscriptions_in_block/{block}", get_with(Self::inscriptions_in_block, set_comma_separated_arrays))
+          .api_route("/inscriptions", get_with(Self::inscriptions, set_comma_separated_arrays))
           .api_route("/random_inscription", get(Self::random_inscription))
           .api_route("/recent_inscriptions", get(Self::recent_inscriptions))
           .api_route("/recent_boosts", get(Self::recent_boosts))
@@ -984,9 +985,9 @@ impl Vermilion {
           .api_route("/inscription_last_transfer_number/{number}", get(Self::inscription_last_transfer_number))
           .api_route("/inscription_transfers/{inscription_id}", get(Self::inscription_transfers))
           .api_route("/inscription_transfers_number/{number}", get(Self::inscription_transfers_number))
-          .api_route("/inscriptions_in_address/{address}", get(Self::inscriptions_in_address))
+          .api_route("/inscriptions_in_address/{address}", get_with(Self::inscriptions_in_address, set_comma_separated_arrays))
           .api_route("/inscriptions_on_sat/{sat}", get(Self::inscriptions_on_sat))
-          .api_route("/inscriptions_in_sat_block/{block}", get(Self::inscriptions_in_sat_block))
+          .api_route("/inscriptions_in_sat_block/{block}", get_with(Self::inscriptions_in_sat_block, set_comma_separated_arrays))
           .api_route("/sat_metadata/{sat}", get(Self::sat_metadata))
           .api_route("/satributes/{sat}", get(Self::satributes))
           .api_route("/inscription_collection_data/{inscription_id}", get(Self::inscription_collection_data))
@@ -997,11 +998,11 @@ impl Vermilion {
           .api_route("/collections", get(Self::collections))
           .api_route("/collection_summary/{collection_symbol}", get(Self::collection_summary))          
           .api_route("/collection_holders/{collection_symbol}", get(Self::collection_holders))
-          .api_route("/inscriptions_in_collection/{collection_symbol}", get(Self::inscriptions_in_collection))
+          .api_route("/inscriptions_in_collection/{collection_symbol}", get_with(Self::inscriptions_in_collection, set_comma_separated_arrays))
           .api_route("/on_chain_collections", get(Self::on_chain_collections))          
           .api_route("/on_chain_collection_summary/{parents}", get(Self::on_chain_collection_summary))
           .api_route("/on_chain_collection_holders/{parents}", get(Self::on_chain_collection_holders))
-          .api_route("/inscriptions_in_on_chain_collection/{parents}", get(Self::inscriptions_in_on_chain_collection))
+          .api_route("/inscriptions_in_on_chain_collection/{parents}", get_with(Self::inscriptions_in_on_chain_collection, set_comma_separated_arrays))
           .api_route("/search/{search_by_query}", get(Self::search_by_query))
           .api_route("/block_icon/{block}", get(Self::block_icon))
           .api_route("/sat_block_icon/{block}", get(Self::sat_block_icon))
