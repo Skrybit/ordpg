@@ -9,7 +9,8 @@ use crate::index::fetcher::Fetcher;
 use crate::subcommand::vermilion::api::{
   TxidParam, serve_openapi, serve_scalar, ApiError,
   InscriptionNumber, BlockNumber, SatNumber, Sha256Hash, 
-  BitcoinAddress, CollectionSymbol, ParentList, SearchQuery
+  BitcoinAddress, CollectionSymbol, ParentList, SearchQuery,
+  SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, BlockSortBy
 };
 use crate::Charm;
 
@@ -20,7 +21,7 @@ use sha256::digest;
 use axum::{
   Json, 
   Router,
-  extract::{Path, State, Query},
+  extract::{Path, State},
   body::Body,
   middleware::map_response,
   http::StatusCode,
@@ -31,6 +32,7 @@ use axum::{
   http,
   Extension,
 };
+use axum_extra::extract::Query;
 use axum_session::{Session, SessionNullPool, SessionConfig, SessionStore, SessionLayer};
 use aide::{
   axum::{
@@ -361,16 +363,43 @@ pub struct InscriptionMetadataForBlock {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct QueryNumber {
+  /// The number parameter for pagination or limiting results
+  #[schemars(description = "Number parameter for pagination or limiting results", example = "10")]
   n: Option<u32>
 }
 
 #[derive(Deserialize, JsonSchema)]
 pub struct InscriptionQueryParams {
-  content_types: Option<String>,
-  satributes: Option<String>,
-  charms: Option<String>,
-  sort_by: Option<String>,
+  /// Content types to filter by
+  #[schemars(description = "Content types to filter inscriptions by")]
+  content_types: Option<Vec<ContentType>>,
+  
+  /// Satributes to filter by
+  #[schemars(description = "Satributes to filter inscriptions by")]
+  satributes: Option<Vec<SatributeType>>,
+  
+  /// Charms to filter by
+  #[schemars(description = "Charms to filter inscriptions by")]
+  charms: Option<Vec<CharmType>>,
+  
+  /// Sort order for the results
+  #[schemars(description = "Sort order for inscription results")]
+  sort_by: Option<InscriptionSortBy>,
+  
+  /// Page number for pagination (0-based)
+  #[schemars(
+    description = "Page number for pagination, starting from 0",
+    example = "0",
+    range(min = 0)
+  )]
   page_number: Option<usize>,
+  
+  /// Number of items per page (max 100)
+  #[schemars(
+    description = "Number of items per page, maximum 100",
+    example = "20",
+    range(min = 1, max = 100)
+  )]
   page_size: Option<usize>
 }
 
@@ -386,26 +415,78 @@ pub struct ParsedInscriptionQueryParams {
 impl From<InscriptionQueryParams> for ParsedInscriptionQueryParams {
   fn from(params: InscriptionQueryParams) -> Self {
       Self {
-        content_types: params.content_types.map_or(Vec::new(), |v| v.split(",").map(|s| s.to_string()).collect()),
-        satributes: params.satributes.map_or(Vec::new(), |v| v.split(",").map(|s| s.to_string()).collect()),
-        charms: params.charms.map_or(Vec::new(), |v| v.split(",").map(|s| s.to_string()).collect()),
-        sort_by: params.sort_by.map_or("newest".to_string(), |v| v),
+        content_types: params.content_types.map_or(Vec::new(), |v| v.into_iter().map(|ct| ct.to_string()).collect()),
+        satributes: params.satributes.map_or(Vec::new(), |v| v.into_iter().map(|s| s.to_string()).collect()),
+        charms: params.charms.map_or(Vec::new(), |v| v.into_iter().map(|c| c.to_string()).collect()),
+        sort_by: params.sort_by.map_or("newest".to_string(), |v| v.to_string()),
         page_number: params.page_number.map_or(0, |v| v),
         page_size: params.page_size.map_or(10, |v| std::cmp::min(v, 100)),
       }
   }
 }
 
-#[derive(Deserialize, Clone, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct CollectionQueryParams {
-  sort_by: Option<String>,
+  /// Sort order for collection results
+  #[schemars(description = "Sort order for collection results")]
+  sort_by: Option<CollectionSortBy>,
+  
+  /// Page number for pagination (0-based)
+  #[schemars(
+    description = "Page number for pagination, starting from 0",
+    example = "0",
+    range(min = 0)
+  )]
   page_number: Option<usize>,
+  
+  /// Number of items per page (max 100)
+  #[schemars(
+    description = "Number of items per page, maximum 100",
+    example = "20",
+    range(min = 1, max = 100)
+  )]
+  page_size: Option<usize>
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct BlockQueryParams {
+  /// Sort order for block results
+  #[schemars(description = "Sort order for block results")]
+  sort_by: Option<BlockSortBy>,
+  
+  /// Page number for pagination (0-based)
+  #[schemars(
+    description = "Page number for pagination, starting from 0",
+    example = "0",
+    range(min = 0)
+  )]
+  page_number: Option<usize>,
+  
+  /// Number of items per page (max 100)
+  #[schemars(
+    description = "Number of items per page, maximum 100",
+    example = "20",
+    range(min = 1, max = 100)
+  )]
   page_size: Option<usize>
 }
 
 #[derive(Deserialize, Clone, JsonSchema)]
 pub struct PaginationParams {
+  /// Page number for pagination (0-based)
+  #[schemars(
+    description = "Page number for pagination, starting from 0",
+    example = "0",
+    range(min = 0)
+  )]
   page_number: Option<usize>,
+  
+  /// Number of items per page (max 100)
+  #[schemars(
+    description = "Number of items per page, maximum 100",
+    example = "20",
+    range(min = 1, max = 100)
+  )]
   page_size: Option<usize>
 }
 
@@ -3914,31 +3995,6 @@ impl Vermilion {
 "If Bitcoin is to change the culture of money, it needs to be cool. Ordinals was the missing piece. The path to $1m is preordained"
   }
 
-  fn parse_and_validate_inscription_params(params: InscriptionQueryParams) -> anyhow::Result<ParsedInscriptionQueryParams> {
-    //1. parse params
-    let params = ParsedInscriptionQueryParams::from(params);
-    //2. validate params
-    for content_type in &params.content_types {
-      if !["text", "image", "gif", "audio", "video", "html", "json", "namespace"].contains(&content_type.as_str()) {
-        return Err(anyhow!("Invalid content_type: {}", content_type));
-      }
-    }
-    for satribute in &params.satributes {
-      if !["vintage", "nakamoto", "firsttransaction", "palindrome", "pizza", "block9", "block9_450", "block78", "alpha", "omega", "uniform_palinception", "perfect_palinception", "block286", "jpeg", 
-           "uncommon", "rare", "epic", "legendary", "mythic", "black_uncommon", "black_rare", "black_epic", "black_legendary"].contains(&satribute.as_str()) {
-        return Err(anyhow!("Invalid satribute: {}", satribute));
-      }
-    }
-    for charm in &params.charms {
-      if !["coin", "cursed", "epic", "legendary", "lost", "nineball", "rare", "reinscription", "unbound", "uncommon", "vindicated"].contains(&charm.as_str()) {
-        return Err(anyhow!("Invalid charm: {}", charm));
-      }
-    }
-    if !["newest", "oldest", "newest_sat", "oldest_sat", "rarest_sat", "commonest_sat", "biggest", "smallest", "highest_fee", "lowest_fee"].contains(&params.sort_by.as_str()) {
-      return Err(anyhow!("Invalid sort_by: {}", params.sort_by));
-    }
-    Ok(params)
-  }
 
   async fn home(State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content(server_config.deadpool,  "6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0".to_string()).await {
@@ -4087,10 +4143,7 @@ impl Vermilion {
   }
 
   async fn inscription_children(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscription_children: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let editions = Self::get_inscription_children(server_config.deadpool, inscription_id.to_string(), parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscription_children: {}", error);
       ApiError::InternalServerError(format!("Error retrieving children for {}", inscription_id.to_string()))
@@ -4099,10 +4152,7 @@ impl Vermilion {
   }
 
   async fn inscription_children_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscription_children_number: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let editions = Self::get_inscription_children_by_number(server_config.deadpool, number, parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscription_children_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving children for {}", number))
@@ -4111,10 +4161,7 @@ impl Vermilion {
   }
 
   async fn inscription_referenced_by(Path(inscription_id): Path<InscriptionId>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscription_referenced_by: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let referenced_by = Self::get_inscription_referenced_by(server_config.deadpool, inscription_id.to_string(), parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscription_referenced_by: {}", error);
       ApiError::InternalServerError(format!("Error retrieving referenced by for {}", inscription_id.to_string()))
@@ -4123,10 +4170,7 @@ impl Vermilion {
   }
 
   async fn inscription_referenced_by_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscription_referenced_by_number: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let referenced_by = Self::get_inscription_referenced_by_number(server_config.deadpool, number, parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscription_referenced_by_number: {}", error);
       ApiError::InternalServerError(format!("Error retrieving referenced by for {}", number))
@@ -4257,10 +4301,7 @@ impl Vermilion {
   }
 
   async fn inscriptions_in_block(Path(BlockNumber(block)): Path<BlockNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscriptions_in_block: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let inscriptions = Self::get_inscriptions_within_block(server_config.deadpool, block, parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscriptions_in_block: {}", error);
       ApiError::InternalServerError(format!("Error retrieving inscriptions for block {}", block))
@@ -4370,28 +4411,7 @@ impl Vermilion {
   }
 
   async fn inscriptions(params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    //1. parse params
     let params = ParsedInscriptionQueryParams::from(params.0);
-    //2. validate params
-    for content_type in &params.content_types {
-      if !["text", "image", "gif", "audio", "video", "html", "json", "namespace"].contains(&content_type.as_str()) {
-        return Err(ApiError::BadRequest(format!("Invalid content_type: {}", content_type)));
-      }
-    }
-    for satribute in &params.satributes {
-      if !["vintage", "nakamoto", "firsttransaction", "palindrome", "pizza", "block9", "block9_450", "block78", "alpha", "omega", "uniform_palinception", "perfect_palinception", "block286", "jpeg", 
-           "uncommon", "rare", "epic", "legendary", "mythic", "black_uncommon", "black_rare", "black_epic", "black_legendary"].contains(&satribute.as_str()) {
-        return Err(ApiError::BadRequest(format!("Invalid satribute: {}", satribute)));
-      }
-    }
-    for charm in &params.charms {
-      if !["coin", "cursed", "epic", "legendary", "lost", "nineball", "rare", "reinscription", "unbound", "uncommon", "vindicated"].contains(&charm.as_str()) {
-        return Err(ApiError::BadRequest(format!("Invalid charm: {}", charm)));
-      }
-    }
-    if !["newest", "oldest", "newest_sat", "oldest_sat", "rarest_sat", "commonest_sat", "biggest", "smallest", "highest_fee", "lowest_fee"].contains(&params.sort_by.as_str()) {
-      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", params.sort_by)));
-    }
     let inscriptions = Self::get_inscriptions(server_config.deadpool, params).await
       .map_err(|error| {
         log::warn!("Error getting /inscriptions: {}", error);
@@ -4433,10 +4453,7 @@ impl Vermilion {
   }
 
   async fn inscriptions_in_address(Path(BitcoinAddress(address)): Path<BitcoinAddress>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscriptions_in_address: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let inscriptions = Self::get_inscriptions_by_address(server_config.deadpool, address.clone(), parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscriptions_in_address: {}", error);
       ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", &*address))
@@ -4453,10 +4470,7 @@ impl Vermilion {
   }
 
   async fn inscriptions_in_sat_block(Path(BlockNumber(block)): Path<BlockNumber>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0).map_err(|error| {
-      log::warn!("Error getting /inscriptions_in_sat_block: {}", error);
-      ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-    })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let inscriptions = Self::get_inscriptions_in_sat_block(server_config.deadpool, block, parsed_params).await.map_err(|error| {
       log::warn!("Error getting /inscriptions_in_sat_block: {}", error);
       ApiError::InternalServerError(format!("Error retrieving inscriptions for {}", block))
@@ -4481,21 +4495,7 @@ impl Vermilion {
   }
 
   async fn collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CollectionSummary>>, ApiError> {
-    //1. parse params
     let params = params.0;
-    let sort_by = params.clone().sort_by.unwrap_or("biggest_on_chain_footprint".to_string());
-    //2. validate params
-    if ![
-      "biggest_on_chain_footprint", "smallest_on_chain_footprint",
-      "most_volume", "least_volume",
-      "biggest_file_size", "smallest_file_size",
-      "biggest_creation_fee", "smallest_creation_fee",
-      "earliest_first_inscribed_date", "latest_first_inscribed_date",
-      "earliest_last_inscribed_date", "latest_last_inscribed_date",
-      "biggest_supply", "smallest_supply",
-    ].contains(&sort_by.as_str()) {
-      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", sort_by)));
-    }
     let collections = Self::get_collections(server_config.deadpool, params).await
       .map_err(|error| {
         log::warn!("Error getting /collections: {}", error);
@@ -4539,11 +4539,7 @@ impl Vermilion {
   }
 
   async fn inscriptions_in_collection(Path(CollectionSymbol(collection_symbol)): Path<CollectionSymbol>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0)
-      .map_err(|error| {
-        log::warn!("Error getting /inscriptions_in_collection: {}", error);
-        ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-      })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let inscriptions = Self::get_inscriptions_in_collection(server_config.deadpool, collection_symbol.clone(), parsed_params).await
       .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_collection: {}", error);
@@ -4553,21 +4549,7 @@ impl Vermilion {
   }
 
   async fn on_chain_collections(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<OnChainCollectionSummary>>, ApiError> {
-    //1. parse params
     let params = params.0;
-    let sort_by = params.clone().sort_by.unwrap_or("biggest_on_chain_footprint".to_string());
-    //2. validate params
-    if ![
-      "biggest_on_chain_footprint", "smallest_on_chain_footprint",
-      "most_volume", "least_volume",
-      "biggest_file_size", "smallest_file_size",
-      "biggest_creation_fee", "smallest_creation_fee",
-      "earliest_first_inscribed_date", "latest_first_inscribed_date",
-      "earliest_last_inscribed_date", "latest_last_inscribed_date",
-      "biggest_supply", "smallest_supply",
-    ].contains(&sort_by.as_str()) {
-      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", sort_by)));
-    }
     let collections = Self::get_on_chain_collections(server_config.deadpool, params).await
       .map_err(|error| {
         log::warn!("Error getting /on_chain_collections: {}", error);
@@ -4598,11 +4580,7 @@ impl Vermilion {
 
   async fn inscriptions_in_on_chain_collection(Path(ParentList(parents)): Path<ParentList>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let parents_vec: Vec<String> = parents.split(",").map(|s| s.to_string()).collect();
-    let parsed_params = Self::parse_and_validate_inscription_params(params.0)
-      .map_err(|error| {
-        log::warn!("Error getting /inscriptions_in_on_chain_collection: {}", error);
-        ApiError::BadRequest(format!("Error parsing and validating params: {}", error))
-      })?;
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
     let inscriptions = Self::get_inscriptions_in_on_chain_collection(server_config.deadpool, parents_vec, parsed_params).await
       .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_on_chain_collection: {}", error);
@@ -4628,22 +4606,8 @@ impl Vermilion {
     Ok(Json(block_stats))
   }
 
-  async fn blocks(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CombinedBlockStats>>, ApiError> {
-    //1. parse params
+  async fn blocks(params: Query<BlockQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<CombinedBlockStats>>, ApiError> {
     let params = params.0;
-    let sort_by = params.clone().sort_by.unwrap_or("newest".to_string());
-    //2. validate params
-    if ![
-      "newest", "oldest", 
-      "most_txs", "least_txs", 
-      "most_inscriptions", "least_inscriptions",
-      "biggest_block", "smallest_block",
-      "biggest_total_inscriptions_size", "smallest_total_inscriptions_size",
-      "highest_total_fees", "lowest_total_fees",
-      "highest_inscription_fees", "lowest_inscription_fees",
-      "most_volume", "least_volume"].contains(&sort_by.as_str()) {
-      return Err(ApiError::BadRequest(format!("Invalid sort_by: {}", sort_by)));
-    }
     let blocks = Self::get_blocks(server_config.deadpool, params).await
       .map_err(|error| {
         log::warn!("Error getting /blocks: {}", error);
@@ -6242,7 +6206,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
 
   async fn get_collections(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<CollectionSummary>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or("oldest".to_string());
+    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint).to_string();
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
     //1. build query
@@ -6553,7 +6517,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
 
   async fn get_on_chain_collections(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<OnChainCollectionSummary>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or("oldest".to_string());
+    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint).to_string();
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
     //1. build query
@@ -6896,9 +6860,9 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     Ok(sat_block_stats)
   }
 
-  async fn get_blocks(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<CombinedBlockStats>> {
+  async fn get_blocks(pool: deadpool, params: BlockQueryParams) -> anyhow::Result<Vec<CombinedBlockStats>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or("newest".to_string());
+    let sort_by = params.sort_by.unwrap_or(BlockSortBy::Newest).to_string();
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
     //1. build query

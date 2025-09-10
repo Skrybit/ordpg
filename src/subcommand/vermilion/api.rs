@@ -12,8 +12,133 @@ use axum::{
 use indexmap::IndexMap;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Serialize};
+use strum::Display;
 
 use crate::InscriptionId;
+
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum SatributeType {
+  Vintage,
+  Nakamoto,
+  Firsttransaction,
+  Palindrome,
+  Pizza,
+  Block9,
+  Block9_450,
+  Block78,
+  Alpha,
+  Omega,
+  UniformPalinception,
+  PerfectPalinception,
+  Block286,
+  Jpeg,
+  Uncommon,
+  Rare,
+  Epic,
+  Legendary,
+  Mythic,
+  BlackUncommon,
+  BlackRare,
+  BlackEpic,
+  BlackLegendary,
+}
+
+
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum CharmType {
+  Coin,
+  Cursed,
+  Epic,
+  Legendary,
+  Lost,
+  Nineball,
+  Rare,
+  Reinscription,
+  Unbound,
+  Uncommon,
+  Vindicated,
+}
+
+
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ContentType {
+  Text,
+  Image,
+  Gif,
+  Audio,
+  Video,
+  Html,
+  Json,
+  Namespace,
+}
+
+
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum InscriptionSortBy {
+  Newest,
+  Oldest,
+  NewestSat,
+  OldestSat,
+  RarestSat,
+  CommonestSat,
+  Biggest,
+  Smallest,
+  HighestFee,
+  LowestFee,
+}
+
+
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum CollectionSortBy {
+  BiggestOnChainFootprint,
+  SmallestOnChainFootprint,
+  MostVolume,
+  LeastVolume,
+  BiggestFileSize,
+  SmallestFileSize,
+  BiggestCreationFee,
+  SmallestCreationFee,
+  EarliestFirstInscribedDate,
+  LatestFirstInscribedDate,
+  EarliestLastInscribedDate,
+  LatestLastInscribedDate,
+  BiggestSupply,
+  SmallestSupply,
+}
+
+
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum BlockSortBy {
+  Newest,
+  Oldest,
+  MostTxs,
+  LeastTxs,
+  MostInscriptions,
+  LeastInscriptions,
+  BiggestBlock,
+  SmallestBlock,
+  BiggestTotalInscriptionsSize,
+  SmallestTotalInscriptionsSize,
+  HighestTotalFees,
+  LowestTotalFees,
+  HighestInscriptionFees,
+  LowestInscriptionFees,
+  MostVolume,
+  LeastVolume,
+}
+
 
 pub async fn serve_openapi(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
   Json(api)
