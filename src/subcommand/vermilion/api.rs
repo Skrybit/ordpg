@@ -16,6 +16,50 @@ use strum::Display;
 
 use crate::InscriptionId;
 
+#[derive(Debug)]
+pub struct ContentResponse {
+  pub headers: HeaderMap,
+  pub body: Vec<u8>,
+}
+
+impl IntoResponse for ContentResponse {
+  fn into_response(self) -> Response {
+    (self.headers, self.body).into_response()
+  }
+}
+
+impl OperationOutput for ContentResponse {
+  type Inner = Self;
+
+  fn inferred_responses(
+    _ctx: &mut GenContext,
+    _operation: &mut Operation,
+  ) -> Vec<(Option<u16>, aide::openapi::Response)> {
+    vec![(
+      Some(200),
+      aide::openapi::Response {
+        description: "Inscription content with appropriate content-type and content-encoding headers".into(),
+        content: IndexMap::from_iter([(
+          "*/*".into(),
+          MediaType {
+            schema: Some(aide::openapi::SchemaObject {
+              json_schema: json_schema!({
+                "type": "string",
+                "format": "binary",
+                "description": "Binary content data of the inscription"
+              }),
+              example: None,
+              external_docs: None,
+            }),
+            ..Default::default()
+          },
+        )]),
+        ..Default::default()
+      },
+    )]
+  }
+}
+
 #[derive(Debug, Deserialize, JsonSchema, Display)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]

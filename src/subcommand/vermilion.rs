@@ -7,7 +7,7 @@ use social_api::social_router;
 use crate::subcommand::server;
 use crate::index::fetcher::Fetcher;
 use crate::subcommand::vermilion::api::{
-  TxidParam, serve_openapi, serve_scalar, ApiError,
+  TxidParam, serve_openapi, serve_scalar, ApiError, ContentResponse,
   InscriptionNumber, BlockNumber, SatNumber, Sha256Hash, 
   BitcoinAddress, CollectionSymbol, ParentList, SearchQuery,
   SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, BlockSortBy
@@ -4017,7 +4017,7 @@ impl Vermilion {
     response
   }
 
-  async fn inscription(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn inscription(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content(server_config.deadpool, inscription_id.to_string()).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4045,10 +4045,10 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    Ok((header_map, bytes))
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
-  async fn inscription_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn inscription_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content_by_number(server_config.deadpool, number).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4072,10 +4072,10 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    Ok((header_map, bytes))
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
-  async fn inscription_sha256(Path(Sha256Hash(sha256)): Path<Sha256Hash>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn inscription_sha256(Path(Sha256Hash(sha256)): Path<Sha256Hash>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = match Self::get_ordinal_content_by_sha256(server_config.deadpool, sha256.clone(), None, None).await {
       Ok(content_blob) => content_blob,
       Err(error) => {
@@ -4099,7 +4099,7 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    Ok((header_map, bytes))
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
   async fn inscription_metadata(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<FullMetadata>, ApiError> {
@@ -4226,7 +4226,7 @@ impl Vermilion {
     Ok(Json(delegates))
   }
 
-  async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn comment(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = Self::get_ordinal_comment(server_config.deadpool, inscription_id.to_string()).await
       .map_err(|error| {
         log::warn!("Error getting /comment: {}", error);
@@ -4252,10 +4252,10 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    Ok((header_map, bytes).into_response())
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
-  async fn comment_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn comment_number(Path(InscriptionNumber(number)): Path<InscriptionNumber>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = Self::get_ordinal_comment_by_number(server_config.deadpool, number).await
       .map_err(|error| {
         log::warn!("Error getting /comment_number: {}", error);
@@ -4281,7 +4281,7 @@ impl Vermilion {
       header_map.insert("content-encoding", encoding.parse().unwrap());
     }
 
-    Ok((header_map, bytes).into_response())
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
   async fn inscription_satribute_editions(Path(inscription_id): Path<InscriptionId>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<SatributeEdition>>, ApiError> {
@@ -4625,7 +4625,7 @@ impl Vermilion {
     Ok(Json(search_result))
   }
 
-  async fn block_icon(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn block_icon(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = Self::get_block_icon(server_config.deadpool, block).await
       .map_err(|error| {
         log::warn!("Error getting /block_icon: {}", error);
@@ -4633,14 +4633,13 @@ impl Vermilion {
       })?;
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
-    Ok((
-      ([(axum::http::header::CONTENT_TYPE, content_type),
-        (axum::http::header::CACHE_CONTROL, "public, max-age=31536000".to_string())]),
-      bytes,
-    ).into_response())
+    let mut header_map = HeaderMap::new();
+    header_map.insert("content-type", content_type.parse().unwrap());
+    header_map.insert("cache-control", "public, max-age=31536000".parse().unwrap());
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
-  async fn sat_block_icon(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<impl IntoApiResponse, ApiError> {
+  async fn sat_block_icon(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<ContentResponse, ApiError> {
     let content_blob = Self::get_sat_block_icon(server_config.deadpool, block).await
       .map_err(|error| {
         log::warn!("Error getting /block_icon: {}", error);
@@ -4648,11 +4647,10 @@ impl Vermilion {
       })?;
     let bytes = content_blob.content;
     let content_type = content_blob.content_type;
-    Ok((
-      ([(axum::http::header::CONTENT_TYPE, content_type),
-        (axum::http::header::CACHE_CONTROL, "public, max-age=31536000".to_string())]),
-      bytes,
-    ).into_response())
+    let mut header_map = HeaderMap::new();
+    header_map.insert("content-type", content_type.parse().unwrap());
+    header_map.insert("cache-control", "public, max-age=31536000".parse().unwrap());
+    Ok(ContentResponse { headers: header_map, body: bytes })
   }
 
   async fn block_transfers(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<Transfer>>, ApiError> {
