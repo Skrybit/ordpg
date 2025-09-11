@@ -243,6 +243,7 @@ pub struct Transfer {
   tx_fee: i64,
   tx_size: i64,
   is_genesis: bool,
+  #[schemars(schema_with = "empty_json_schema")]
   burn_metadata: Option<serde_json::Value>,
 }
 
@@ -367,6 +368,10 @@ pub struct QueryNumber {
   /// The number parameter for pagination or limiting results
   #[schemars(description = "Number parameter for pagination or limiting results", example = "10")]
   n: Option<u32>
+}
+
+fn empty_json_schema(_gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
+  schemars::json_schema!({})
 }
 
 fn deserialize_comma_separated_fromstr<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
@@ -640,6 +645,7 @@ pub struct CollectionHolders {
 pub struct InscriptionCollectionData {
   id: String,
   number: i64,
+  #[schemars(schema_with = "empty_json_schema")]
   off_chain_metadata: serde_json::Value,
   collection_symbol: String,
   name: Option<String>,
@@ -700,6 +706,7 @@ pub struct FullMetadata {
   delegate: Option<String>,
   delegate_content_type: Option<String>,
   metaprotocol: Option<String>,
+  #[schemars(schema_with = "empty_json_schema")]
   on_chain_metadata: serde_json::Value,
   sat: Option<i64>,
   sat_block: Option<i64>,
@@ -714,9 +721,11 @@ pub struct FullMetadata {
   is_bitmap_style: bool,
   is_recursive: bool,
   spaced_rune: Option<String>,
+  #[schemars(schema_with = "empty_json_schema")]
   raw_properties: serde_json::Value,
   inscribed_by_address: Option<String>,
   collection_symbol: Option<String>,
+  #[schemars(schema_with = "empty_json_schema")]
   off_chain_metadata: Option<serde_json::Value>,
   collection_name: Option<String>
 }
@@ -739,6 +748,7 @@ pub struct BoostFullMetadata {
   delegate: Option<String>,
   delegate_content_type: Option<String>,
   metaprotocol: Option<String>,
+  #[schemars(schema_with = "empty_json_schema")]
   on_chain_metadata: serde_json::Value,
   sat: Option<i64>,
   sat_block: Option<i64>,
@@ -753,9 +763,11 @@ pub struct BoostFullMetadata {
   is_bitmap_style: bool,
   is_recursive: bool,
   spaced_rune: Option<String>,
+  #[schemars(schema_with = "empty_json_schema")]
   raw_properties: serde_json::Value,
   inscribed_by_address: Option<String>,
   collection_symbol: Option<String>,
+  #[schemars(schema_with = "empty_json_schema")]
   off_chain_metadata: Option<serde_json::Value>,
   collection_name: Option<String>,
   address: Option<String>,
