@@ -706,6 +706,14 @@ pub struct OnChainCollectionHolders {
 }
 
 #[derive(Serialize, JsonSchema)]
+pub struct GalleryHolders {
+  gallery_id: String,
+  gallery_holder_count: Option<i64>,
+  address: Option<String>,
+  address_count: Option<i64>,
+}
+
+#[derive(Serialize, JsonSchema)]
 pub struct FullMetadata {  
   sequence_number: i64,
   id: String,
@@ -1033,6 +1041,8 @@ impl Vermilion {
           .api_route("/on_chain_collection_holders/{parents}", get(Self::on_chain_collection_holders))
           .api_route("/inscriptions_in_on_chain_collection/{parents}", get_with(Self::inscriptions_in_on_chain_collection, set_comma_separated_arrays))
           .api_route("/inscription_galleries", get(Self::inscription_galleries))
+          .api_route("/gallery_summary/{gallery_id}", get(Self::gallery_summary))
+          .api_route("/gallery_holders/{gallery_id}", get(Self::gallery_holders))
           .api_route("/inscriptions_in_gallery/{gallery_id}", get_with(Self::inscriptions_in_gallery, set_comma_separated_arrays))
           .api_route("/search/{search_by_query}", get(Self::search_by_query))
           .api_route("/block_icon/{block}", get(Self::block_icon))
@@ -4682,6 +4692,24 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
+  async fn gallery_summary(Path(gallery_id): Path<String>, State(server_config): State<ApiServerConfig>) -> Result<Json<GallerySummary>, ApiError> {
+    let gallery_summary = Self::get_gallery_summary(server_config.deadpool, gallery_id.clone()).await
+      .map_err(|error| {
+        log::warn!("Error getting /gallery_summary: {}", error);
+        ApiError::InternalServerError(format!("Error retrieving gallery summary for {}", gallery_id))
+      })?;
+    Ok(Json(gallery_summary))
+  }
+
+  async fn gallery_holders(Path(gallery_id): Path<String>, params: Query<PaginationParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<GalleryHolders>>, ApiError> {
+    let gallery_holders = Self::get_gallery_holders(server_config.deadpool, gallery_id.clone(), params.0).await
+      .map_err(|error| {
+        log::warn!("Error getting /gallery_holders: {}", error);
+        ApiError::InternalServerError(format!("Error retrieving gallery holders for {}", gallery_id))
+      })?;
+    Ok(Json(gallery_holders))
+  }
+
   async fn block_statistics(Path(BlockNumber(block)): Path<BlockNumber>, State(server_config): State<ApiServerConfig>) -> Result<Json<CombinedBlockStats>, ApiError> {
     let block_stats = Self::get_block_statistics(server_config.deadpool, block).await.map_err(|error| {
       log::warn!("Error getting /block_statistics: {}", error);
@@ -6986,6 +7014,70 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       inscriptions.push(inscription);
     }
     Ok(inscriptions)
+  }
+
+  async fn get_gallery_summary(pool: deadpool, gallery_id: String) -> anyhow::Result<GallerySummary> {
+    let conn = pool.get().await?;
+    let result = conn.query_one(
+      "SELECT * FROM gallery_summary WHERE gallery_id = $1",
+      &[&gallery_id]
+    ).await?;
+
+    let gallery = GallerySummary {
+      gallery_id: result.get("gallery_id"),
+      total_inscription_fees: result.get("total_inscription_fees"),
+      total_inscription_size: result.get("total_inscription_size"),
+      first_inscribed_date: result.get("first_inscribed_date"),
+      last_inscribed_date: result.get("last_inscribed_date"),
+      supply: result.get("supply"),
+      range_start: result.get("range_start"),
+      range_end: result.get("range_end"),
+      total_volume: result.get("total_volume"),
+      transfer_fees: result.get("transfer_fees"),
+      transfer_footprint: result.get("transfer_footprint"),
+      total_fees: result.get("total_fees"),
+      total_on_chain_footprint: result.get("total_on_chain_footprint"),
+    };
+    Ok(gallery)
+  }
+
+  async fn get_gallery_holders(pool: deadpool, gallery_id: String, params: PaginationParams) -> anyhow::Result<Vec<GalleryHolders>> {
+    let conn = pool.get().await?;
+    let page_size = params.page_size.unwrap_or(10);
+    let offset = params.page_number.unwrap_or(0) * page_size;
+    let mut query = r"
+      select
+        gallery_id as gallery_inscription_id,
+        COUNT(address) OVER () AS gallery_holder_count,
+        address,
+        count(*) as address_count
+      from inscription_galleries g
+      left join addresses a on g.inscription_id = a.id
+      where g.gallery_id = $1
+      group by a.address, g.gallery_id
+      order by count(*) desc".to_string();
+    if page_size > 0 {
+      query.push_str(format!(" LIMIT {}", page_size).as_str());
+    }
+    if offset > 0 {
+      query.push_str(format!(" OFFSET {}", offset).as_str());
+    }
+
+    let result = conn.query(
+      query.as_str(),
+      &[&gallery_id]
+    ).await?;
+    let mut holders = Vec::new();
+    for row in result {
+      let holder = GalleryHolders {
+        gallery_id: row.get("gallery_id"),
+        gallery_holder_count: row.get("gallery_holder_count"),
+        address: row.get("address"),
+        address_count: row.get("address_count"),
+      };
+      holders.push(holder);
+    }
+    Ok(holders)
   }
 
   async fn get_block_statistics(pool: deadpool, block: i64) -> anyhow::Result<CombinedBlockStats> {
