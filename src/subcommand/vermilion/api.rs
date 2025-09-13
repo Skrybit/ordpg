@@ -209,9 +209,24 @@ pub enum ApiError {
 impl IntoResponse for ApiError {
   fn into_response(self) -> Response {
     match self {
-      ApiError::InternalServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response(),
-      ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg).into_response(),
-      ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
+      ApiError::InternalServerError(message) => {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
+          "error": "InternalServerError",
+          "message": message
+        }))).into_response()
+      },
+      ApiError::NotFound(message) => {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({
+          "error": "NotFound",
+          "message": message
+        }))).into_response()
+      },
+      ApiError::BadRequest(message) => {
+        (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+          "error": "BadRequest",
+          "message": message
+        }))).into_response()
+      },
     }
   }
 }
@@ -229,15 +244,27 @@ impl OperationOutput for ApiError {
         aide::openapi::Response {
           description: "Bad Request - Invalid input parameters".into(),
           content: IndexMap::from_iter([(
-            "text/plain; charset=utf-8".into(),
+            "application/json".into(),
             MediaType {
               schema: Some(aide::openapi::SchemaObject {
                 json_schema: json_schema!({
-                  "type": "string",
-                  "description": "Bad request error message",
-                  "example": "Invalid parameter value"
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "BadRequest"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Invalid parameter value"
+                    }
+                  },
+                  "required": ["error", "message"]
                 }),
-                example: Some(serde_json::json!("Invalid parameter value")),
+                example: Some(serde_json::json!({
+                  "error": "BadRequest",
+                  "message": "Invalid parameter value"
+                })),
                 external_docs: None,
               }),
               ..Default::default()
@@ -251,15 +278,27 @@ impl OperationOutput for ApiError {
         aide::openapi::Response {
           description: "Not Found - Resource does not exist".into(),
           content: IndexMap::from_iter([(
-            "text/plain; charset=utf-8".into(),
+            "application/json".into(),
             MediaType {
               schema: Some(aide::openapi::SchemaObject {
                 json_schema: json_schema!({
-                  "type": "string",
-                  "description": "Resource not found error message",
-                  "example": "Resource not found"
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "NotFound"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    }
+                  },
+                  "required": ["error", "message"]
                 }),
-                example: Some(serde_json::json!("Resource not found")),
+                example: Some(serde_json::json!({
+                  "error": "NotFound",
+                  "message": "Resource not found"
+                })),
                 external_docs: None,
               }),
               ..Default::default()
@@ -273,15 +312,27 @@ impl OperationOutput for ApiError {
         aide::openapi::Response {
           description: "Internal Server Error - Server encountered an error".into(),
           content: IndexMap::from_iter([(
-            "text/plain; charset=utf-8".into(),
+            "application/json".into(),
             MediaType {
               schema: Some(aide::openapi::SchemaObject {
                 json_schema: json_schema!({
-                  "type": "string",
-                  "description": "Internal server error message",
-                  "example": "Internal server error occurred"
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "InternalServerError"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error occurred"
+                    }
+                  },
+                  "required": ["error", "message"]
                 }),
-                example: Some(serde_json::json!("Internal server error occurred")),
+                example: Some(serde_json::json!({
+                  "error": "InternalServerError",
+                  "message": "Internal server error occurred"
+                })),
                 external_docs: None,
               }),
               ..Default::default()
