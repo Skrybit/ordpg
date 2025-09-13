@@ -214,6 +214,23 @@ pub struct GalleryMetadata {
 }
 
 #[derive(Serialize, JsonSchema)]
+pub struct GallerySummary {
+  gallery_id: String,
+  total_inscription_fees: Option<i64>,
+  total_inscription_size: Option<i64>,
+  first_inscribed_date: Option<i64>,
+  last_inscribed_date: Option<i64>,
+  supply: Option<i64>,
+  range_start: Option<i64>,
+  range_end: Option<i64>,
+  total_volume: Option<i64>,
+  transfer_fees: Option<i64>,
+  transfer_footprint: Option<i64>,
+  total_fees: Option<i64>,
+  total_on_chain_footprint: Option<i64>
+}
+
+#[derive(Serialize, JsonSchema)]
 pub struct Satribute {
   sat: i64,
   satribute: String,
@@ -1011,10 +1028,12 @@ impl Vermilion {
           .api_route("/collection_summary/{collection_symbol}", get(Self::collection_summary))          
           .api_route("/collection_holders/{collection_symbol}", get(Self::collection_holders))
           .api_route("/inscriptions_in_collection/{collection_symbol}", get_with(Self::inscriptions_in_collection, set_comma_separated_arrays))
-          .api_route("/on_chain_collections", get(Self::on_chain_collections))          
+          .api_route("/on_chain_collections", get(Self::on_chain_collections))
           .api_route("/on_chain_collection_summary/{parents}", get(Self::on_chain_collection_summary))
           .api_route("/on_chain_collection_holders/{parents}", get(Self::on_chain_collection_holders))
           .api_route("/inscriptions_in_on_chain_collection/{parents}", get_with(Self::inscriptions_in_on_chain_collection, set_comma_separated_arrays))
+          .api_route("/inscription_galleries", get(Self::inscription_galleries))
+          .api_route("/inscriptions_in_gallery/{gallery_id}", get_with(Self::inscriptions_in_gallery, set_comma_separated_arrays))
           .api_route("/search/{search_by_query}", get(Self::search_by_query))
           .api_route("/block_icon/{block}", get(Self::block_icon))
           .api_route("/sat_block_icon/{block}", get(Self::sat_block_icon))
@@ -2917,6 +2936,7 @@ impl Vermilion {
     Self::create_recently_stored_collection_table(pool.clone()).await.context("Failed to create recently traded collection table")?;
     Self::create_on_chain_collection_summary_table(pool.clone()).await.context("Failed to create on chain collection summary table")?;
     Self::create_gallery_table(pool.clone()).await.context("Failed to create gallery table")?;
+    Self::create_gallery_summary_table(pool.clone()).await.context("Failed to create gallery summary table")?;
     
     Self::create_procedure_log(pool.clone()).await.context("Failed to create proc log")?;
     Self::create_trigger_timing_log(pool.clone()).await.context("Failed to create trigger timing log")?;
@@ -2927,6 +2947,8 @@ impl Vermilion {
     Self::create_trending_weights_procedure(pool.clone()).await.context("Failed to create trending weights proc")?;
     Self::create_on_chain_collection_summary_procedure(pool.clone()).await.context("Failed to create on chain collection summary proc")?;
     Self::create_single_on_chain_collection_summary_procedure(pool.clone()).await.context("Failed to create single on chain collection summary proc")?;
+    Self::create_gallery_summary_procedure(pool.clone()).await.context("Failed to create gallery summary proc")?;
+    Self::create_single_gallery_summary_procedure(pool.clone()).await.context("Failed to create single gallery summary proc")?;
 
     Self::initialize_transfer_tables(pool.clone()).await.context("Failed to initialize transfer tables")?;
     initialize_runes_tables(pool.clone()).await.context("Failed to create runes tables")?;
@@ -2937,6 +2959,7 @@ impl Vermilion {
 
     Self::create_metadata_full_insert_trigger(pool.clone()).await.context("Failed to create metadata full trigger")?;
     Self::create_collection_insert_trigger(pool.clone()).await.context("Failed to create collection trigger")?;
+    Self::create_gallery_insert_trigger(pool.clone()).await.context("Failed to create gallery trigger")?;
 
     Self::create_metadata_delete_trigger(pool.clone()).await.context("Failed to create metadata delete trigger")?;
     Self::create_edition_delete_trigger(pool.clone()).await.context("Failed to create edition delete trigger")?;
@@ -3408,13 +3431,34 @@ impl Vermilion {
         supply bigint,
         range_start bigint,
         range_end bigint,
-        total_volume bigint, 
+        total_volume bigint,
         transfer_fees bigint,
         transfer_footprint bigint,
         total_fees bigint,
         total_on_chain_footprint bigint
       )").await?;
     conn.simple_query("CREATE INDEX IF NOT EXISTS index_on_chain_collection_summary_parents ON on_chain_collection_summary USING GIN (parents);").await?;
+    Ok(())
+  }
+
+  pub(crate) async fn create_gallery_summary_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
+    let conn = pool.get().await?;
+    conn.simple_query(
+      r"CREATE TABLE IF NOT EXISTS gallery_summary (
+        gallery_id varchar(80) not null primary key,
+        total_inscription_fees bigint,
+        total_inscription_size bigint,
+        first_inscribed_date bigint,
+        last_inscribed_date bigint,
+        supply bigint,
+        range_start bigint,
+        range_end bigint,
+        total_volume bigint,
+        transfer_fees bigint,
+        transfer_footprint bigint,
+        total_fees bigint,
+        total_on_chain_footprint bigint
+      )").await?;
     Ok(())
   }
 
@@ -4614,6 +4658,26 @@ impl Vermilion {
       .map_err(|error| {
         log::warn!("Error getting /inscriptions_in_on_chain_collection: {}", error);
         ApiError::InternalServerError("Error retrieving inscriptions in on chain collection".to_string())
+      })?;
+    Ok(Json(inscriptions))
+  }
+
+  async fn inscription_galleries(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<GallerySummary>>, ApiError> {
+    let params = params.0;
+    let galleries = Self::get_inscription_galleries(server_config.deadpool, params).await
+      .map_err(|error| {
+        log::warn!("Error getting /inscription_galleries: {}", error);
+        ApiError::InternalServerError(format!("Error retrieving inscription galleries"))
+      })?;
+    Ok(Json(galleries))
+  }
+
+  async fn inscriptions_in_gallery(Path(gallery_id): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let parsed_params = ParsedInscriptionQueryParams::from(params.0);
+    let inscriptions = Self::get_inscriptions_in_gallery(server_config.deadpool, gallery_id.clone(), parsed_params).await
+      .map_err(|error| {
+        log::warn!("Error getting /inscriptions_in_gallery: {}", error);
+        ApiError::InternalServerError(format!("Error retrieving inscriptions in gallery {}", gallery_id))
       })?;
     Ok(Json(inscriptions))
   }
@@ -6823,6 +6887,107 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     Ok(inscriptions)
   }
 
+  async fn get_inscription_galleries(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<GallerySummary>> {
+    let conn = pool.get().await?;
+    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint).to_string();
+    let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
+    let page_number = params.page_number.unwrap_or(0);
+
+    let mut query = r"
+      SELECT
+        s.gallery_id,
+        s.total_inscription_fees,
+        s.total_inscription_size,
+        s.first_inscribed_date,
+        s.last_inscribed_date,
+        s.supply,
+        s.range_start,
+        s.range_end,
+        s.total_volume,
+        s.transfer_fees,
+        s.transfer_footprint,
+        s.total_fees,
+        s.total_on_chain_footprint
+      from gallery_summary s".to_string();
+
+    if sort_by == "biggest_on_chain_footprint" {
+      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
+    } else if sort_by == "smallest_on_chain_footprint" {
+      query.push_str(" ORDER BY s.total_on_chain_footprint ASC");
+    } else if sort_by == "most_volume" {
+      query.push_str(" ORDER BY s.total_volume DESC NULLS LAST");
+    } else if sort_by == "least_volume" {
+      query.push_str(" ORDER BY s.total_volume ASC");
+    } else if sort_by == "biggest_file_size" {
+      query.push_str(" ORDER BY s.total_inscription_size DESC NULLS LAST");
+    } else if sort_by == "smallest_file_size" {
+      query.push_str(" ORDER BY s.total_inscription_size ASC");
+    } else if sort_by == "biggest_creation_fee" {
+      query.push_str(" ORDER BY s.total_inscription_fees DESC NULLS LAST");
+    } else if sort_by == "smallest_creation_fee" {
+      query.push_str(" ORDER BY s.total_inscription_fees ASC");
+    } else if sort_by == "earliest_first_inscribed_date" {
+      query.push_str(" ORDER BY s.first_inscribed_date ASC");
+    } else if sort_by == "latest_first_inscribed_date" {
+      query.push_str(" ORDER BY s.first_inscribed_date DESC NULLS LAST");
+    } else if sort_by == "earliest_last_inscribed_date" {
+      query.push_str(" ORDER BY s.last_inscribed_date ASC");
+    } else if sort_by == "latest_last_inscribed_date" {
+      query.push_str(" ORDER BY s.last_inscribed_date DESC NULLS LAST");
+    } else if sort_by == "biggest_supply" {
+      query.push_str(" ORDER BY s.supply DESC NULLS LAST");
+    } else if sort_by == "smallest_supply" {
+      query.push_str(" ORDER BY s.supply ASC");
+    } else {
+      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
+    }
+
+    query.push_str(format!(" LIMIT {} OFFSET {}", page_size, page_number * page_size).as_str());
+
+    let result = conn.query(query.as_str(), &[]).await?;
+    let mut galleries = Vec::new();
+
+    for row in result {
+      let gallery = GallerySummary {
+        gallery_id: row.get("gallery_id"),
+        total_inscription_fees: row.get("total_inscription_fees"),
+        total_inscription_size: row.get("total_inscription_size"),
+        first_inscribed_date: row.get("first_inscribed_date"),
+        last_inscribed_date: row.get("last_inscribed_date"),
+        supply: row.get("supply"),
+        range_start: row.get("range_start"),
+        range_end: row.get("range_end"),
+        total_volume: row.get("total_volume"),
+        transfer_fees: row.get("transfer_fees"),
+        transfer_footprint: row.get("transfer_footprint"),
+        total_fees: row.get("total_fees"),
+        total_on_chain_footprint: row.get("total_on_chain_footprint"),
+      };
+      galleries.push(gallery);
+    }
+    Ok(galleries)
+  }
+
+  async fn get_inscriptions_in_gallery(pool: deadpool, gallery_id: String, params: ParsedInscriptionQueryParams) -> anyhow::Result<Vec<FullMetadata>> {
+    let conn = pool.get().await?;
+    let base_query = "
+      SELECT o.* 
+      FROM inscription_galleries ig 
+      LEFT JOIN ordinals_full_v o 
+      ON ig.inscription_id=o.id 
+      WHERE ig.gallery_id=$1
+    ".to_string();
+let full_query = Self::create_inscription_query_string(base_query, params);
+    let result = conn.query(full_query.as_str(), &[&gallery_id]).await?;
+    let mut inscriptions = Vec::new();
+
+    for row in result {
+      let inscription = Self::map_row_to_fullmetadata(row);
+      inscriptions.push(inscription);
+    }
+    Ok(inscriptions)
+  }
+
   async fn get_block_statistics(pool: deadpool, block: i64) -> anyhow::Result<CombinedBlockStats> {
     let conn = pool.get().await?;
     let result = conn.query_one(
@@ -8538,6 +8703,131 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     Ok(())
   }
 
+  async fn create_gallery_summary_procedure(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
+    let conn = pool.get().await?;
+    conn.simple_query(
+      r#"
+      CREATE OR REPLACE PROCEDURE update_gallery_summary()
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+      LOCK TABLE ordinals IN EXCLUSIVE MODE;
+      LOCK TABLE transfers IN EXCLUSIVE MODE;
+      LOCK TABLE inscription_galleries IN EXCLUSIVE MODE;
+      RAISE NOTICE 'update_gallery_summary: lock acquired';
+      WITH a AS
+        (SELECT g.gallery_id,
+                count(*) AS supply,
+                sum(o.content_length) AS total_inscription_size,
+                sum(o.genesis_fee) AS total_inscription_fees,
+                min(o.timestamp) AS first_inscribed_date,
+                max(o.timestamp) AS last_inscribed_date,
+                min(o.number) AS range_start,
+                max(o.number) AS range_end
+        FROM inscription_galleries g
+        JOIN ordinals o ON g.inscription_id = o.id
+        GROUP BY g.gallery_id),
+      b AS
+        (SELECT g.gallery_id,
+                sum(t.price) AS total_volume,
+                sum(t.tx_fee) AS transfer_fees,
+                sum(t.tx_size) AS transfer_footprint
+        FROM inscription_galleries g
+        LEFT JOIN transfers t ON g.inscription_id = o.id = t.id
+        WHERE NOT t.is_genesis
+        GROUP BY g.gallery_id)
+      INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint)
+        SELECT a.*,
+              coalesce(b.total_volume,0),
+              coalesce(b.transfer_fees,0),
+              coalesce(b.transfer_footprint,0),
+              a.total_inscription_fees + coalesce(b.transfer_fees,0),
+              a.total_inscription_size + coalesce(b.transfer_footprint,0)
+        FROM a
+        LEFT JOIN b ON a.gallery_id = b.gallery_id ON CONFLICT (gallery_id) DO
+        UPDATE
+        SET supply = EXCLUDED.supply,
+            total_inscription_size = EXCLUDED.total_inscription_size,
+            total_inscription_fees = EXCLUDED.total_inscription_fees,
+            first_inscribed_date = EXCLUDED.first_inscribed_date,
+            last_inscribed_date = EXCLUDED.last_inscribed_date,
+            range_start = EXCLUDED.range_start,
+            range_end = EXCLUDED.range_end,
+            total_volume = EXCLUDED.total_volume,
+            transfer_fees = EXCLUDED.transfer_fees,
+            transfer_footprint = EXCLUDED.transfer_footprint,
+            total_fees = EXCLUDED.total_fees,
+            total_on_chain_footprint = EXCLUDED.total_on_chain_footprint;
+      END;
+      $$;"#).await?;
+    Ok(())
+  }
+
+  async fn create_single_gallery_summary_procedure(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
+    let conn = pool.get().await?;
+    conn.simple_query(
+      r#"
+        CREATE OR REPLACE PROCEDURE update_single_gallery_summary(v_gallery_id varchar(80))
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          LOCK TABLE ordinals IN EXCLUSIVE MODE;
+          LOCK TABLE transfers IN EXCLUSIVE MODE;
+          LOCK TABLE inscription_galleries IN EXCLUSIVE MODE;
+          RAISE NOTICE 'update_single_gallery_summary: lock acquired';
+          WITH a AS
+            (SELECT g.gallery_id,
+                    count(*) AS supply,
+                    sum(o.content_length) AS total_inscription_size,
+                    sum(o.genesis_fee) AS total_inscription_fees,
+                    min(o.timestamp) AS first_inscribed_date,
+                    max(o.timestamp) AS last_inscribed_date,
+                    min(o.number) AS range_start,
+                    max(o.number) AS range_end
+            FROM inscription_galleries g
+            LEFT JOIN ordinals o ON g.inscription_id = o.id
+            WHERE g.gallery_id = v_gallery_id
+            GROUP BY g.gallery_id),
+          b AS
+            (SELECT g.gallery_id,
+                    sum(t.price) AS total_volume,
+                    sum(t.tx_fee) AS transfer_fees,
+                    sum(t.tx_size) AS transfer_footprint
+            FROM inscription_galleries g
+            LEFT JOIN transfers t ON g.inscription_id = t.id
+            WHERE NOT t.is_genesis
+              AND g.gallery_id = v_gallery_id
+            GROUP BY g.gallery_id)
+          INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint)
+            SELECT a.*,
+                  coalesce(b.total_volume,0),
+                  coalesce(b.transfer_fees,0),
+                  coalesce(b.transfer_footprint,0),
+                  a.total_inscription_fees + coalesce(b.transfer_fees,0),
+                  a.total_inscription_size + coalesce(b.transfer_footprint,0)
+            FROM a
+            LEFT JOIN b ON a.gallery_id = b.gallery_id ON CONFLICT (gallery_id) DO
+            UPDATE
+            SET supply = EXCLUDED.supply,
+                total_inscription_size = EXCLUDED.total_inscription_size,
+                total_inscription_fees = EXCLUDED.total_inscription_fees,
+                first_inscribed_date = EXCLUDED.first_inscribed_date,
+                last_inscribed_date = EXCLUDED.last_inscribed_date,
+                range_start = EXCLUDED.range_start,
+                range_end = EXCLUDED.range_end,
+                total_volume = EXCLUDED.total_volume,
+                transfer_fees = EXCLUDED.transfer_fees,
+                transfer_footprint = EXCLUDED.transfer_footprint,
+                total_fees = EXCLUDED.total_fees,
+                total_on_chain_footprint = EXCLUDED.total_on_chain_footprint;
+
+        END;
+        $$;
+      "#
+    ).await?;
+    Ok(())
+  }
+
   async fn create_procedure_log(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -8548,6 +8838,31 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         ts timestamp,
         rows_returned int
       )").await?;
+    Ok(())
+  }
+
+  async fn create_gallery_insert_trigger(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
+    let conn = pool.get().await?;
+    conn.simple_query(r"CREATE OR REPLACE FUNCTION after_gallery_insert() RETURNS TRIGGER AS $$
+      DECLARE
+        gallery_id_rec RECORD;
+      BEGIN
+        -- Update gallery summary for all galleries affected by this INSERT statement
+        FOR gallery_id_rec IN
+          SELECT DISTINCT gallery_id FROM inserted_galleries
+        LOOP
+          -- Use the existing single gallery summary procedure
+          CALL update_single_gallery_summary(gallery_id_rec.gallery_id);
+        END LOOP;
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql;").await?;
+    conn.simple_query(
+      r#"CREATE OR REPLACE TRIGGER after_gallery_insert
+      AFTER INSERT ON inscription_galleries
+      REFERENCING NEW TABLE AS inserted_galleries
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION after_gallery_insert();"#).await?;
     Ok(())
   }
 
