@@ -8825,7 +8825,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
                 sum(t.tx_fee) AS transfer_fees,
                 sum(t.tx_size) AS transfer_footprint
         FROM inscription_galleries g
-        LEFT JOIN transfers t ON g.inscription_id = o.id = t.id
+        LEFT JOIN transfers t ON g.inscription_id = t.id
         WHERE NOT t.is_genesis
         GROUP BY g.gallery_id)
       INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint)
