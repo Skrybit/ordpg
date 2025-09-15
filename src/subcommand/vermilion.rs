@@ -2913,9 +2913,9 @@ impl Vermilion {
     let t3 = Instant::now();
     let gallery_metadata = inscription.gallery()
       .iter()
-      .map(|id| GalleryMetadata {
-        gallery_id: id.to_string(),
-        inscription_id: inscription_id.to_string(),
+      .map(|gallery_item_id| GalleryMetadata {
+        gallery_id: inscription_id.to_string(),
+        inscription_id: gallery_item_id.to_string(),
       })
       .collect::<Vec<GalleryMetadata>>();
     let t4 = Instant::now();
