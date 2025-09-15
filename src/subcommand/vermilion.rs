@@ -10,7 +10,7 @@ use crate::subcommand::vermilion::api::{
   TxidParam, serve_openapi, serve_scalar, ApiError, ContentResponse,
   InscriptionNumber, BlockNumber, SatNumber, Sha256Hash, 
   BitcoinAddress, CollectionSymbol, ParentList, SearchQuery,
-  SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, BlockSortBy,
+  SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, GallerySortBy, BlockSortBy,
   set_comma_separated_arrays
 };
 use crate::Charm;
@@ -479,6 +479,29 @@ pub struct CollectionQueryParams {
   )]
   page_number: Option<usize>,
   
+  /// Number of items per page (max 100)
+  #[schemars(
+    description = "Number of items per page, maximum 100",
+    example = "20",
+    range(min = 1, max = 100)
+  )]
+  page_size: Option<usize>
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GalleryQueryParams {
+  /// Sort order for gallery results
+  #[schemars(description = "Sort order for gallery results")]
+  sort_by: Option<GallerySortBy>,
+
+  /// Page number for pagination (0-based)
+  #[schemars(
+    description = "Page number for pagination, starting from 0",
+    example = "0",
+    range(min = 0)
+  )]
+  page_number: Option<usize>,
+
   /// Number of items per page (max 100)
   #[schemars(
     description = "Number of items per page, maximum 100",
@@ -1041,7 +1064,8 @@ impl Vermilion {
           .api_route("/on_chain_collection_summary/{parents}", get(Self::on_chain_collection_summary))
           .api_route("/on_chain_collection_holders/{parents}", get(Self::on_chain_collection_holders))
           .api_route("/inscriptions_in_on_chain_collection/{parents}", get_with(Self::inscriptions_in_on_chain_collection, set_comma_separated_arrays))
-          .api_route("/inscription_galleries", get(Self::inscription_galleries))
+          .api_route("/gallery_inscriptions", get(Self::gallery_inscriptions))
+          .api_route("/galleries_summary", get(Self::galleries_summary))
           .api_route("/gallery_summary/{gallery_id}", get(Self::gallery_summary))
           .api_route("/gallery_holders/{gallery_id}", get(Self::gallery_holders))
           .api_route("/inscriptions_in_gallery/{gallery_id}", get_with(Self::inscriptions_in_gallery, set_comma_separated_arrays))
@@ -4678,14 +4702,23 @@ impl Vermilion {
     Ok(Json(inscriptions))
   }
 
-  async fn inscription_galleries(params: Query<CollectionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<GallerySummary>>, ApiError> {
+  async fn galleries_summary(params: Query<GalleryQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<GallerySummary>>, ApiError> {
     let params = params.0;
-    let galleries = Self::get_inscription_galleries(server_config.deadpool, params).await
+    let galleries = Self::get_galleries_summary(server_config.deadpool, params).await
       .map_err(|error| {
-        log::warn!("Error getting /inscription_galleries: {}", error);
-        ApiError::InternalServerError(format!("Error retrieving inscription galleries"))
+        log::warn!("Error getting /galleries_summary: {}", error);
+        ApiError::InternalServerError(format!("Error retrieving galleries summary"))
       })?;
     Ok(Json(galleries))
+  }
+
+  async fn gallery_inscriptions(params: Query<GalleryQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
+    let inscriptions = Self::get_gallery_inscriptions(server_config.deadpool, params.0).await
+      .map_err(|error| {
+        log::warn!("Error getting /gallery_inscriptions: {}", error);
+        ApiError::InternalServerError(format!("Error retrieving gallery inscriptions"))
+      })?;
+    Ok(Json(inscriptions))
   }
 
   async fn inscriptions_in_gallery(Path(gallery_id): Path<String>, params: Query<InscriptionQueryParams>, State(server_config): State<ApiServerConfig>) -> Result<Json<Vec<FullMetadata>>, ApiError> {
@@ -6921,9 +6954,9 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     Ok(inscriptions)
   }
 
-  async fn get_inscription_galleries(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<GallerySummary>> {
+  async fn get_galleries_summary(pool: deadpool, params: GalleryQueryParams) -> anyhow::Result<Vec<GallerySummary>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint).to_string();
+    let sort_by = params.sort_by.unwrap_or(GallerySortBy::BiggestOnChainFootprint).to_string();
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
 
@@ -6973,6 +7006,10 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
       query.push_str(" ORDER BY s.supply DESC NULLS LAST");
     } else if sort_by == "smallest_supply" {
       query.push_str(" ORDER BY s.supply ASC");
+    } else if sort_by == "most_boosts" {
+      query.push_str(" ORDER BY s.boost_count DESC NULLS LAST");
+    } else if sort_by == "least_boosts" {
+      query.push_str(" ORDER BY s.boost_count ASC");
     } else {
       query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
     }
@@ -7004,13 +7041,63 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     Ok(galleries)
   }
 
+  async fn get_gallery_inscriptions(pool: deadpool, params: GalleryQueryParams) -> anyhow::Result<Vec<FullMetadata>> {
+    let conn = pool.get().await?;
+    let sort_by = params.sort_by.unwrap_or(GallerySortBy::BiggestOnChainFootprint).to_string();
+    let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
+    let page_number = params.page_number.unwrap_or(0);
+
+    let mut query = r"
+      WITH gallery_ids AS (
+        SELECT DISTINCT gallery_id
+        FROM inscription_galleries
+      )
+      SELECT o.*, s.boost_count, s.total_volume, s.total_fees, s.total_on_chain_footprint, s.supply, s.total_inscription_size, s.total_inscription_fees
+      FROM gallery_ids g
+      LEFT JOIN ordinals_full_v o ON g.gallery_id=o.id
+      LEFT JOIN gallery_summary s ON g.gallery_id=s.gallery_id
+    ".to_string();
+
+    // Add sorting
+    if sort_by == "biggest_on_chain_footprint" {
+      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
+    } else if sort_by == "smallest_on_chain_footprint" {
+      query.push_str(" ORDER BY s.total_on_chain_footprint ASC");
+    } else if sort_by == "most_volume" {
+      query.push_str(" ORDER BY s.total_volume DESC NULLS LAST");
+    } else if sort_by == "least_volume" {
+      query.push_str(" ORDER BY s.total_volume ASC");
+    } else if sort_by == "most_boosts" {
+      query.push_str(" ORDER BY s.boost_count DESC NULLS LAST");
+    } else if sort_by == "least_boosts" {
+      query.push_str(" ORDER BY s.boost_count ASC");
+    } else if sort_by == "biggest_supply" {
+      query.push_str(" ORDER BY s.supply DESC NULLS LAST");
+    } else if sort_by == "smallest_supply" {
+      query.push_str(" ORDER BY s.supply ASC");
+    } else {
+      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
+    }
+
+    query.push_str(format!(" LIMIT {} OFFSET {}", page_size, page_number * page_size).as_str());
+
+    let result = conn.query(query.as_str(), &[]).await?;
+    let mut inscriptions = Vec::new();
+
+    for row in result {
+      let inscription = Self::map_row_to_fullmetadata(row);
+      inscriptions.push(inscription);
+    }
+    Ok(inscriptions)
+  }
+
   async fn get_inscriptions_in_gallery(pool: deadpool, gallery_id: String, params: ParsedInscriptionQueryParams) -> anyhow::Result<Vec<FullMetadata>> {
     let conn = pool.get().await?;
     let base_query = "
-      SELECT o.* 
-      FROM inscription_galleries ig 
-      LEFT JOIN ordinals_full_v o 
-      ON ig.inscription_id=o.id 
+      SELECT o.*
+      FROM inscription_galleries ig
+      LEFT JOIN ordinals_full_v o
+      ON ig.inscription_id=o.id
       WHERE ig.gallery_id=$1
     ".to_string();
 let full_query = Self::create_inscription_query_string(base_query, params);

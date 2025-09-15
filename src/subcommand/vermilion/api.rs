@@ -159,6 +159,27 @@ pub enum CollectionSortBy {
   SmallestSupply,
 }
 
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GallerySortBy {
+  BiggestOnChainFootprint,
+  SmallestOnChainFootprint,
+  MostVolume,
+  LeastVolume,
+  BiggestFileSize,
+  SmallestFileSize,
+  BiggestCreationFee,
+  SmallestCreationFee,
+  EarliestFirstInscribedDate,
+  LatestFirstInscribedDate,
+  EarliestLastInscribedDate,
+  LatestLastInscribedDate,
+  BiggestSupply,
+  SmallestSupply,
+  MostBoosts,
+  LeastBoosts,
+}
 
 #[derive(Debug, Deserialize, JsonSchema, Display)]
 #[serde(rename_all = "snake_case")]
