@@ -7051,7 +7051,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
     let offset = params.page_number.unwrap_or(0) * page_size;
     let mut query = r"
       select
-        gallery_id as gallery_inscription_id,
+        gallery_id,
         COUNT(address) OVER () AS gallery_holder_count,
         address,
         count(*) as address_count
