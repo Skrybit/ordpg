@@ -1274,6 +1274,10 @@ impl Vermilion {
                   needs_update = false;
                 }
               },
+              // Ensure we yield periodically to check for shutdown
+              _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                continue;
+              }
             }
           }
         });
