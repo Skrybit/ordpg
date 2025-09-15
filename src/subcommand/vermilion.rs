@@ -227,7 +227,8 @@ pub struct GallerySummary {
   transfer_fees: Option<i64>,
   transfer_footprint: Option<i64>,
   total_fees: Option<i64>,
-  total_on_chain_footprint: Option<i64>
+  total_on_chain_footprint: Option<i64>,
+  boost_count: Option<i64>
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -3471,7 +3472,8 @@ impl Vermilion {
         transfer_fees bigint,
         transfer_footprint bigint,
         total_fees bigint,
-        total_on_chain_footprint bigint
+        total_on_chain_footprint bigint,
+        boost_count bigint
       )").await?;
     Ok(())
   }
@@ -6939,7 +6941,8 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         s.transfer_fees,
         s.transfer_footprint,
         s.total_fees,
-        s.total_on_chain_footprint
+        s.total_on_chain_footprint,
+        s.boost_count
       from gallery_summary s".to_string();
 
     if sort_by == "biggest_on_chain_footprint" {
@@ -6994,6 +6997,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         transfer_footprint: row.get("transfer_footprint"),
         total_fees: row.get("total_fees"),
         total_on_chain_footprint: row.get("total_on_chain_footprint"),
+        boost_count: row.get("boost_count"),
       };
       galleries.push(gallery);
     }
@@ -7041,6 +7045,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       transfer_footprint: result.get("transfer_footprint"),
       total_fees: result.get("total_fees"),
       total_on_chain_footprint: result.get("total_on_chain_footprint"),
+      boost_count: result.get("boost_count"),
     };
     Ok(gallery)
   }
@@ -8831,16 +8836,24 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         FROM inscription_galleries g
         LEFT JOIN transfers t ON g.inscription_id = t.id
         WHERE NOT t.is_genesis
+        GROUP BY g.gallery_id),
+      c AS
+        (SELECT g.gallery_id,
+                count(d.bootleg_id) AS boost_count
+        FROM inscription_galleries g
+        LEFT JOIN delegates d ON g.inscription_id = d.bootleg_id
         GROUP BY g.gallery_id)
-      INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint)
+      INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint, boost_count)
         SELECT a.*,
               coalesce(b.total_volume,0),
               coalesce(b.transfer_fees,0),
               coalesce(b.transfer_footprint,0),
               a.total_inscription_fees + coalesce(b.transfer_fees,0),
-              a.total_inscription_size + coalesce(b.transfer_footprint,0)
+              a.total_inscription_size + coalesce(b.transfer_footprint,0),
+              coalesce(c.boost_count,0)
         FROM a
-        LEFT JOIN b ON a.gallery_id = b.gallery_id ON CONFLICT (gallery_id) DO
+        LEFT JOIN b ON a.gallery_id = b.gallery_id
+        LEFT JOIN c ON a.gallery_id = c.gallery_id ON CONFLICT (gallery_id) DO
         UPDATE
         SET supply = EXCLUDED.supply,
             total_inscription_size = EXCLUDED.total_inscription_size,
@@ -8853,7 +8866,8 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             transfer_fees = EXCLUDED.transfer_fees,
             transfer_footprint = EXCLUDED.transfer_footprint,
             total_fees = EXCLUDED.total_fees,
-            total_on_chain_footprint = EXCLUDED.total_on_chain_footprint;
+            total_on_chain_footprint = EXCLUDED.total_on_chain_footprint,
+            boost_count = EXCLUDED.boost_count;
       END;
       $$;"#).await?;
     Ok(())
@@ -8893,16 +8907,25 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             LEFT JOIN transfers t ON g.inscription_id = t.id
             WHERE NOT t.is_genesis
               AND g.gallery_id = v_gallery_id
+            GROUP BY g.gallery_id),
+          c AS
+            (SELECT g.gallery_id,
+                    count(d.bootleg_id) AS boost_count
+            FROM inscription_galleries g
+            LEFT JOIN delegates d ON g.inscription_id = d.bootleg_id
+            WHERE g.gallery_id = v_gallery_id
             GROUP BY g.gallery_id)
-          INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint)
+          INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint, boost_count)
             SELECT a.*,
                   coalesce(b.total_volume,0),
                   coalesce(b.transfer_fees,0),
                   coalesce(b.transfer_footprint,0),
                   a.total_inscription_fees + coalesce(b.transfer_fees,0),
-                  a.total_inscription_size + coalesce(b.transfer_footprint,0)
+                  a.total_inscription_size + coalesce(b.transfer_footprint,0),
+                  coalesce(c.boost_count,0)
             FROM a
-            LEFT JOIN b ON a.gallery_id = b.gallery_id ON CONFLICT (gallery_id) DO
+            LEFT JOIN b ON a.gallery_id = b.gallery_id
+            LEFT JOIN c ON a.gallery_id = c.gallery_id ON CONFLICT (gallery_id) DO
             UPDATE
             SET supply = EXCLUDED.supply,
                 total_inscription_size = EXCLUDED.total_inscription_size,
@@ -8915,7 +8938,8 @@ let full_query = Self::create_inscription_query_string(base_query, params);
                 transfer_fees = EXCLUDED.transfer_fees,
                 transfer_footprint = EXCLUDED.transfer_footprint,
                 total_fees = EXCLUDED.total_fees,
-                total_on_chain_footprint = EXCLUDED.total_on_chain_footprint;
+                total_on_chain_footprint = EXCLUDED.total_on_chain_footprint,
+                boost_count = EXCLUDED.boost_count;
 
         END;
         $$;
