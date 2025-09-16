@@ -5010,27 +5010,29 @@ impl Vermilion {
 
   async fn get_ordinal_content(pool: deadpool, inscription_id: String) -> anyhow::Result<ContentBlob> {
     let conn = pool.clone().get().await?;
-    let mut current_id = inscription_id;
-    let mut sha256: Option<String> = None;
-    let mut content_type: Option<String> = None;
-    let mut content_encoding: Option<String> = None;
-    let mut delegate: Option<String>;
 
-    // Follow delegation chain up to 10 times
+    // Get initial values before the loop
+    let row = conn.query_one(
+      "SELECT sha256, content_type, content_encoding, delegate FROM ordinals WHERE id=$1 LIMIT 1",
+      &[&inscription_id]
+    ).await?;
+    let mut sha256: Option<String> = row.get(0);
+    let mut content_type: Option<String> = row.get(1);
+    let mut content_encoding: Option<String> = row.get(2);
+    let mut delegate: Option<String> = row.get(3);
+
+    // Loop up to 10 times to follow delegation chain
     for _ in 0..10 {
-      let row = conn.query_one(
-        "SELECT sha256, content_type, content_encoding, delegate FROM ordinals WHERE id=$1 LIMIT 1",
-        &[&current_id]
-      ).await?;
-      sha256 = row.get(0);
-      content_type = row.get(1);
-      content_encoding = row.get(2);
-      delegate = row.get(3);
-
       match delegate {
         Some(ref d) => {
-          current_id = d.clone();
-          continue;
+          let row = conn.query_one(
+            "SELECT sha256, content_type, content_encoding, delegate FROM ordinals WHERE id=$1 LIMIT 1",
+            &[&d]
+          ).await?;
+          sha256 = row.get(0);
+          content_type = row.get(1);
+          content_encoding = row.get(2);
+          delegate = row.get(3);
         },
         None => break,
       }
@@ -5043,6 +5045,8 @@ impl Vermilion {
 
   async fn get_ordinal_content_by_number(pool: deadpool, number: i64) -> anyhow::Result<ContentBlob> {
     let conn = pool.clone().get().await?;
+
+    // Get initial values before the loop
     let row = conn.query_one(
       "SELECT sha256, content_type, content_encoding, delegate FROM ordinals WHERE number=$1 LIMIT 1",
       &[&number]
@@ -5050,22 +5054,26 @@ impl Vermilion {
     let mut sha256: Option<String> = row.get(0);
     let mut content_type: Option<String> = row.get(1);
     let mut content_encoding: Option<String> = row.get(2);
-    let delegate: Option<String> = row.get(3);
-    match delegate {
-      Some(delegate) => {
-        let id: Regex = Regex::new(r"^[[:xdigit:]]{64}i\d+$").unwrap();
-        if id.is_match(&delegate) {
+    let mut delegate: Option<String> = row.get(3);
+
+    // Loop up to 10 times to follow delegation chain
+    for _ in 0..10 {
+      match delegate {
+        Some(ref d) => {
+          // Look up by id, not number, for delegates
           let row = conn.query_one(
-            "SELECT sha256, content_type, content_encoding  FROM ordinals WHERE id=$1 LIMIT 1",
-            &[&delegate]
+            "SELECT sha256, content_type, content_encoding, delegate FROM ordinals WHERE id=$1 LIMIT 1",
+            &[&d]
           ).await?;
           sha256 = row.get(0);
           content_type = row.get(1);
           content_encoding = row.get(2);
-        }
-      },
-      None => {}
+          delegate = row.get(3);
+        },
+        None => break,
+      }
     }
+
     let sha256 = sha256.ok_or(anyhow!("No sha256 found"))?;
     let content = Self::get_ordinal_content_by_sha256(pool, sha256, content_type, content_encoding).await;
     content
