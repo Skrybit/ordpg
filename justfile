@@ -229,3 +229,17 @@ env:
 
 env-open:
   open http://127.0.0.1:9001
+
+update-api-client:
+  @echo "Starting server in background..."
+  cargo run -- --config ~/ord.yaml vermilion --run-api-server-only --api-http-port 1081 &
+  @echo "Waiting for server to be ready..."
+  @until curl -f http://localhost:1081/api.json >/dev/null 2>&1; do echo "Server not ready, waiting..."; sleep 2; done
+  @echo "Server is ready!"
+  @echo "Fetching API JSON..."
+  curl -s http://localhost:1081/api.json | jq '.' > ../Vermilion/app/client/src/api/rustClient/api.json
+  @echo "Generating new Rust client..."
+  cd ../Vermilion/app/client && bun run generate-rust-client
+  @echo "Stopping server..."
+  @lsof -ti :1081 | xargs kill -INT 2>/dev/null || true
+  @echo "✅ Done!"
