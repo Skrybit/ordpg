@@ -739,7 +739,7 @@ pub struct GalleryHolders {
 }
 
 #[derive(Serialize, JsonSchema)]
-pub struct FullMetadata {  
+pub struct FullMetadata {
   sequence_number: i64,
   id: String,
   content_length: Option<i64>,
@@ -771,8 +771,6 @@ pub struct FullMetadata {
   is_bitmap_style: bool,
   is_recursive: bool,
   spaced_rune: Option<String>,
-  #[schemars(schema_with = "empty_json_schema")]
-  raw_properties: serde_json::Value,
   inscribed_by_address: Option<String>,
   collection_symbol: Option<String>,
   #[schemars(schema_with = "empty_json_schema")]
@@ -813,8 +811,6 @@ pub struct BoostFullMetadata {
   is_bitmap_style: bool,
   is_recursive: bool,
   spaced_rune: Option<String>,
-  #[schemars(schema_with = "empty_json_schema")]
-  raw_properties: serde_json::Value,
   inscribed_by_address: Option<String>,
   collection_symbol: Option<String>,
   #[schemars(schema_with = "empty_json_schema")]
@@ -5251,7 +5247,6 @@ impl Vermilion {
       is_bitmap_style: row.get("is_bitmap_style"),
       is_recursive: row.get("is_recursive"),
       spaced_rune: row.get("spaced_rune"),
-      raw_properties: row.get("raw_properties"),
       inscribed_by_address: row.get("inscribed_by_address"),
       collection_symbol: row.get("collection_symbol"),
       off_chain_metadata: row.get("off_chain_metadata"),      
@@ -5782,7 +5777,6 @@ impl Vermilion {
         is_bitmap_style: row.get("is_bitmap_style"),
         is_recursive: row.get("is_recursive"),
         spaced_rune: row.get("spaced_rune"),
-        raw_properties: row.get("raw_properties"),
         inscribed_by_address: row.get("inscribed_by_address"),
         collection_symbol: row.get("collection_symbol"),
         off_chain_metadata: row.get("off_chain_metadata"),
