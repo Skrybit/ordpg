@@ -220,6 +220,7 @@ pub struct GallerySummary {
   total_inscription_size: Option<i64>,
   first_inscribed_date: Option<i64>,
   last_inscribed_date: Option<i64>,
+  gallery_inscribed_date: Option<i64>,
   supply: Option<i64>,
   range_start: Option<i64>,
   range_end: Option<i64>,
@@ -3489,6 +3490,7 @@ impl Vermilion {
         total_inscription_size bigint,
         first_inscribed_date bigint,
         last_inscribed_date bigint,
+        gallery_inscribed_date bigint,
         supply bigint,
         range_start bigint,
         range_end bigint,
@@ -6939,6 +6941,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         total_inscription_size: row.get("total_inscription_size"),
         first_inscribed_date: row.get("first_inscribed_date"),
         last_inscribed_date: row.get("last_inscribed_date"),
+        gallery_inscribed_date: row.get("gallery_inscribed_date"),
         supply: row.get("supply"),
         range_start: row.get("range_start"),
         range_end: row.get("range_end"),
@@ -7036,6 +7039,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       total_inscription_size: result.get("total_inscription_size"),
       first_inscribed_date: result.get("first_inscribed_date"),
       last_inscribed_date: result.get("last_inscribed_date"),
+      gallery_inscribed_date: result.get("gallery_inscribed_date"),
       supply: result.get("supply"),
       range_start: result.get("range_start"),
       range_end: result.get("range_end"),
@@ -8809,6 +8813,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
                 sum(o.genesis_fee) AS total_inscription_fees,
                 min(o.timestamp) AS first_inscribed_date,
                 max(o.timestamp) AS last_inscribed_date,
+                (SELECT go.timestamp FROM ordinals go WHERE go.id = g.gallery_id LIMIT 1) AS gallery_inscribed_date,
                 min(o.number) AS range_start,
                 max(o.number) AS range_end
         FROM inscription_galleries g
@@ -8829,7 +8834,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         FROM inscription_galleries g
         LEFT JOIN delegates d ON g.inscription_id = d.bootleg_id
         GROUP BY g.gallery_id)
-      INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint, boost_count)
+      INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, gallery_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint, boost_count)
         SELECT a.*,
               coalesce(b.total_volume,0),
               coalesce(b.transfer_fees,0),
@@ -8846,6 +8851,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             total_inscription_fees = EXCLUDED.total_inscription_fees,
             first_inscribed_date = EXCLUDED.first_inscribed_date,
             last_inscribed_date = EXCLUDED.last_inscribed_date,
+            gallery_inscribed_date = EXCLUDED.gallery_inscribed_date,
             range_start = EXCLUDED.range_start,
             range_end = EXCLUDED.range_end,
             total_volume = EXCLUDED.total_volume,
@@ -8878,6 +8884,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
                     sum(o.genesis_fee) AS total_inscription_fees,
                     min(o.timestamp) AS first_inscribed_date,
                     max(o.timestamp) AS last_inscribed_date,
+                    (SELECT go.timestamp FROM ordinals go WHERE go.id = g.gallery_id LIMIT 1) AS gallery_inscribed_date,
                     min(o.number) AS range_start,
                     max(o.number) AS range_end
             FROM inscription_galleries g
@@ -8901,7 +8908,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             LEFT JOIN delegates d ON g.inscription_id = d.bootleg_id
             WHERE g.gallery_id = v_gallery_id
             GROUP BY g.gallery_id)
-          INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint, boost_count)
+          INSERT INTO gallery_summary (gallery_id, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, gallery_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint, boost_count)
             SELECT a.*,
                   coalesce(b.total_volume,0),
                   coalesce(b.transfer_fees,0),
