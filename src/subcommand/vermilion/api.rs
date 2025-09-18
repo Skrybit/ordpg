@@ -180,6 +180,8 @@ pub enum GallerySortBy {
   SmallestSupply,
   MostBoosts,
   LeastBoosts,
+  Newest,
+  Oldest,
 }
 
 #[derive(Debug, Deserialize, JsonSchema, Display)]

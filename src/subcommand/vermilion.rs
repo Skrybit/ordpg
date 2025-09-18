@@ -6926,6 +6926,8 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
       GallerySortBy::SmallestSupply => " ORDER BY s.supply ASC",
       GallerySortBy::MostBoosts => " ORDER BY s.boost_count DESC NULLS LAST",
       GallerySortBy::LeastBoosts => " ORDER BY s.boost_count ASC",
+      GallerySortBy::Newest => " ORDER BY s.gallery_inscribed_date DESC NULLS LAST",
+      GallerySortBy::Oldest => " ORDER BY s.gallery_inscribed_date ASC",
     };
     query.push_str(order_clause);
 
@@ -6987,10 +6989,12 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
       GallerySortBy::LatestFirstInscribedDate => " ORDER BY s.first_inscribed_date DESC NULLS LAST",
       GallerySortBy::EarliestLastInscribedDate => " ORDER BY s.last_inscribed_date ASC",
       GallerySortBy::LatestLastInscribedDate => " ORDER BY s.last_inscribed_date DESC NULLS LAST",
-      GallerySortBy::MostBoosts => " ORDER BY s.boost_count DESC NULLS LAST",
-      GallerySortBy::LeastBoosts => " ORDER BY s.boost_count ASC",
       GallerySortBy::BiggestSupply => " ORDER BY s.supply DESC NULLS LAST",
       GallerySortBy::SmallestSupply => " ORDER BY s.supply ASC",
+      GallerySortBy::MostBoosts => " ORDER BY s.boost_count DESC NULLS LAST",
+      GallerySortBy::LeastBoosts => " ORDER BY s.boost_count ASC",
+      GallerySortBy::Newest => " ORDER BY s.gallery_inscribed_date DESC NULLS LAST",
+      GallerySortBy::Oldest => " ORDER BY s.gallery_inscribed_date ASC",
     };
     query.push_str(order_clause);
 
