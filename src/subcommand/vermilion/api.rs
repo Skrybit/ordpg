@@ -119,6 +119,7 @@ pub enum ContentType {
   Html,
   Json,
   Namespace,
+  Javascript,
 }
 
 

@@ -444,10 +444,10 @@ pub struct InscriptionQueryParams {
 }
 
 pub struct ParsedInscriptionQueryParams {
-  content_types: Vec<String>,
+  content_types: Vec<ContentType>,
   satributes: Vec<String>,
   charms: Vec<String>,
-  sort_by: String,
+  sort_by: InscriptionSortBy,
   page_number: usize,
   page_size: usize
 }
@@ -455,10 +455,10 @@ pub struct ParsedInscriptionQueryParams {
 impl From<InscriptionQueryParams> for ParsedInscriptionQueryParams {
   fn from(params: InscriptionQueryParams) -> Self {
       Self {
-        content_types: params.content_types.into_iter().map(|ct| ct.to_string()).collect(),
+        content_types: params.content_types,
         satributes: params.satributes.into_iter().map(|s| s.to_string()).collect(),
         charms: params.charms.into_iter().map(|c| c.to_string()).collect(),
-        sort_by: params.sort_by.map_or("newest".to_string(), |v| v.to_string()),
+        sort_by: params.sort_by.unwrap_or(InscriptionSortBy::Newest),
         page_number: params.page_number.map_or(0, |v| v),
         page_size: params.page_size.map_or(10, |v| std::cmp::min(v, 100)),
       }
@@ -5987,25 +5987,18 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.content_types.len() > 0 {
       query.push_str(" AND (");
       for (i, content_type) in params.content_types.iter().enumerate() {
-        if content_type == "text" {
-          query.push_str("o.content_category = 'text'");
-        } else if content_type == "image" {
-          query.push_str("o.content_category = 'image'");
-        } else if content_type == "gif" {
-          query.push_str("o.content_category = 'gif'");
-        } else if content_type == "audio" {
-          query.push_str("o.content_category = 'audio'");
-        } else if content_type == "video" {
-          query.push_str("o.content_category = 'video'");
-        } else if content_type == "html" {
-          query.push_str("o.content_category = 'html'");
-        } else if content_type == "json" {
-          query.push_str("o.content_category = 'json'");
-        } else if content_type == "namespace" {
-          query.push_str("o.content_category = 'namespace'");
-        } else if content_type == "javascript" {
-          query.push_str("o.content_category = 'javascript'");
-        }
+        let category = match content_type {
+          ContentType::Text => "o.content_category = 'text'",
+          ContentType::Image => "o.content_category = 'image'",
+          ContentType::Gif => "o.content_category = 'gif'",
+          ContentType::Audio => "o.content_category = 'audio'",
+          ContentType::Video => "o.content_category = 'video'",
+          ContentType::Html => "o.content_category = 'html'",
+          ContentType::Json => "o.content_category = 'json'",
+          ContentType::Namespace => "o.content_category = 'namespace'",
+          ContentType::Javascript => "o.content_category = 'javascript'",
+        };
+        query.push_str(category);
         if i < params.content_types.len() - 1 {
           query.push_str(" OR ");
         }
@@ -6018,27 +6011,19 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.charms.len() > 0 {
       query.push_str(format!(" AND (o.charms && array['{}'::varchar])", params.charms.join("'::varchar,'")).as_str());
     }
-    if params.sort_by == "newest" {
-      query.push_str(" ORDER BY o.sequence_number DESC");
-    } else if params.sort_by == "oldest" {
-      query.push_str(" ORDER BY o.sequence_number ASC");
-    } else if params.sort_by == "newest_sat" {
-      query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "oldest_sat" {
-      query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "rarest_sat" {
-      //query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "commonest_sat" {
-      //query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "biggest" {
-      query.push_str(" ORDER BY o.content_length DESC");
-    } else if params.sort_by == "smallest" {
-      query.push_str(" ORDER BY o.content_length ASC");
-    } else if params.sort_by == "highest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee DESC");
-    } else if params.sort_by == "lowest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee ASC");
-    }
+    let order_clause = match params.sort_by {
+      InscriptionSortBy::Newest => " ORDER BY o.sequence_number DESC",
+      InscriptionSortBy::Oldest => " ORDER BY o.sequence_number ASC",
+      InscriptionSortBy::NewestSat => " ORDER BY o.sat DESC",
+      InscriptionSortBy::OldestSat => " ORDER BY o.sat ASC",
+      InscriptionSortBy::RarestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::CommonestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::Biggest => " ORDER BY o.content_length DESC",
+      InscriptionSortBy::Smallest => " ORDER BY o.content_length ASC",
+      InscriptionSortBy::HighestFee => " ORDER BY o.genesis_fee DESC",
+      InscriptionSortBy::LowestFee => " ORDER BY o.genesis_fee ASC",
+    };
+    query.push_str(order_clause);
     if params.page_size > 0 {
       query.push_str(format!(" LIMIT {}", params.page_size).as_str());
     }
@@ -6055,25 +6040,18 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.content_types.len() > 0 {
       query.push_str(" AND (");
       for (i, content_type) in params.content_types.iter().enumerate() {
-        if content_type == "text" {
-          query.push_str("o.content_category = 'text'");
-        } else if content_type == "image" {
-          query.push_str("o.content_category = 'image'");
-        } else if content_type == "gif" {
-          query.push_str("o.content_category = 'gif'");
-        } else if content_type == "audio" {
-          query.push_str("o.content_category = 'audio'");
-        } else if content_type == "video" {
-          query.push_str("o.content_category = 'video'");
-        } else if content_type == "html" {
-          query.push_str("o.content_category = 'html'");
-        } else if content_type == "json" {
-          query.push_str("o.content_category = 'json'");
-        } else if content_type == "namespace" {
-          query.push_str("o.content_category = 'namespace'");
-        } else if content_type == "javascript" {
-          query.push_str("o.content_category = 'javascript'");
-        }
+        let category = match content_type {
+          ContentType::Text => "o.content_category = 'text'",
+          ContentType::Image => "o.content_category = 'image'",
+          ContentType::Gif => "o.content_category = 'gif'",
+          ContentType::Audio => "o.content_category = 'audio'",
+          ContentType::Video => "o.content_category = 'video'",
+          ContentType::Html => "o.content_category = 'html'",
+          ContentType::Json => "o.content_category = 'json'",
+          ContentType::Namespace => "o.content_category = 'namespace'",
+          ContentType::Javascript => "o.content_category = 'javascript'",
+        };
+        query.push_str(category);
         if i < params.content_types.len() - 1 {
           query.push_str(" OR ");
         }
@@ -6086,27 +6064,19 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.charms.len() > 0 {
       query.push_str(format!(" AND (o.charms && array['{}'::varchar])", params.charms.join("'::varchar,'")).as_str());
     }
-    if params.sort_by == "newest" {
-      query.push_str(" ORDER BY o.sequence_number DESC");
-    } else if params.sort_by == "oldest" {
-      query.push_str(" ORDER BY o.sequence_number ASC");
-    } else if params.sort_by == "newest_sat" {
-      query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "oldest_sat" {
-      query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "rarest_sat" {
-      //query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "commonest_sat" {
-      //query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "biggest" {
-      query.push_str(" ORDER BY o.content_length DESC");
-    } else if params.sort_by == "smallest" {
-      query.push_str(" ORDER BY o.content_length ASC");
-    } else if params.sort_by == "highest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee DESC");
-    } else if params.sort_by == "lowest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee ASC");
-    }
+    let order_clause = match params.sort_by {
+      InscriptionSortBy::Newest => " ORDER BY o.sequence_number DESC",
+      InscriptionSortBy::Oldest => " ORDER BY o.sequence_number ASC",
+      InscriptionSortBy::NewestSat => " ORDER BY o.sat DESC",
+      InscriptionSortBy::OldestSat => " ORDER BY o.sat ASC",
+      InscriptionSortBy::RarestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::CommonestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::Biggest => " ORDER BY o.content_length DESC",
+      InscriptionSortBy::Smallest => " ORDER BY o.content_length ASC",
+      InscriptionSortBy::HighestFee => " ORDER BY o.genesis_fee DESC",
+      InscriptionSortBy::LowestFee => " ORDER BY o.genesis_fee ASC",
+    };
+    query.push_str(order_clause);
     if params.page_size > 0 {
       query.push_str(format!(" LIMIT {}", params.page_size).as_str());
     }
@@ -6375,12 +6345,12 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
 
   async fn get_collections(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<CollectionSummary>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint).to_string();
+    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint);
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
     //1. build query
     let mut query = r"
-      SELECT 
+      SELECT
         l.collection_symbol, l.name, l.description, l.twitter, l.discord, l.website,
         s.total_inscription_fees,
         s.total_inscription_size,
@@ -6395,35 +6365,24 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         s.total_fees,
         s.total_on_chain_footprint
       from collection_list l left join collection_summary s on l.collection_symbol=s.collection_symbol where l.name!=''".to_string();
-    if sort_by == "biggest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
-    } else if sort_by == "smallest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint ASC");
-    } else if sort_by == "most_volume" {
-      query.push_str(" ORDER BY s.total_volume DESC NULLS LAST");
-    } else if sort_by == "least_volume" {
-      query.push_str(" ORDER BY s.total_volume ASC");
-    } else if sort_by == "biggest_file_size" {
-      query.push_str(" ORDER BY s.total_inscription_size DESC NULLS LAST");
-    } else if sort_by == "smallest_file_size" {
-      query.push_str(" ORDER BY s.total_inscription_size ASC");
-    } else if sort_by == "biggest_creation_fee" {
-      query.push_str(" ORDER BY s.total_inscription_fees DESC NULLS LAST");
-    } else if sort_by == "smallest_creation_fee" {
-      query.push_str(" ORDER BY s.total_inscription_fees ASC");
-    } else if sort_by == "earliest_first_inscribed_date" {
-      query.push_str(" ORDER BY s.first_inscribed_date ASC");
-    } else if sort_by == "latest_first_inscribed_date" {
-      query.push_str(" ORDER BY s.first_inscribed_date DESC NULLS LAST");
-    } else if sort_by == "earliest_last_inscribed_date" {
-      query.push_str(" ORDER BY s.last_inscribed_date ASC");
-    } else if sort_by == "latest_last_inscribed_date" {
-      query.push_str(" ORDER BY s.last_inscribed_date DESC NULLS LAST");
-    } else if sort_by == "biggest_supply" {
-      query.push_str(" ORDER BY s.supply DESC NULLS LAST");
-    } else if sort_by == "smallest_supply" {
-      query.push_str(" ORDER BY s.supply ASC");
-    }
+
+    let order_clause = match sort_by {
+      CollectionSortBy::BiggestOnChainFootprint => " ORDER BY s.total_on_chain_footprint DESC NULLS LAST",
+      CollectionSortBy::SmallestOnChainFootprint => " ORDER BY s.total_on_chain_footprint ASC",
+      CollectionSortBy::MostVolume => " ORDER BY s.total_volume DESC NULLS LAST",
+      CollectionSortBy::LeastVolume => " ORDER BY s.total_volume ASC",
+      CollectionSortBy::BiggestFileSize => " ORDER BY s.total_inscription_size DESC NULLS LAST",
+      CollectionSortBy::SmallestFileSize => " ORDER BY s.total_inscription_size ASC",
+      CollectionSortBy::BiggestCreationFee => " ORDER BY s.total_inscription_fees DESC NULLS LAST",
+      CollectionSortBy::SmallestCreationFee => " ORDER BY s.total_inscription_fees ASC",
+      CollectionSortBy::EarliestFirstInscribedDate => " ORDER BY s.first_inscribed_date ASC",
+      CollectionSortBy::LatestFirstInscribedDate => " ORDER BY s.first_inscribed_date DESC NULLS LAST",
+      CollectionSortBy::EarliestLastInscribedDate => " ORDER BY s.last_inscribed_date ASC",
+      CollectionSortBy::LatestLastInscribedDate => " ORDER BY s.last_inscribed_date DESC NULLS LAST",
+      CollectionSortBy::BiggestSupply => " ORDER BY s.supply DESC NULLS LAST",
+      CollectionSortBy::SmallestSupply => " ORDER BY s.supply ASC",
+    };
+    query.push_str(order_clause);
     if page_size > 0 {
       query.push_str(format!(" LIMIT {}", page_size).as_str());
     }
@@ -6554,25 +6513,18 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.content_types.len() > 0 {
       query.push_str(" AND (");
       for (i, content_type) in params.content_types.iter().enumerate() {
-        if content_type == "text" {
-          query.push_str("o.content_category = 'text'");
-        } else if content_type == "image" {
-          query.push_str("o.content_category = 'image'");
-        } else if content_type == "gif" {
-          query.push_str("o.content_category = 'gif'");
-        } else if content_type == "audio" {
-          query.push_str("o.content_category = 'audio'");
-        } else if content_type == "video" {
-          query.push_str("o.content_category = 'video'");
-        } else if content_type == "html" {
-          query.push_str("o.content_category = 'html'");
-        } else if content_type == "json" {
-          query.push_str("o.content_category = 'json'");
-        } else if content_type == "namespace" {
-          query.push_str("o.content_category = 'namespace'");
-        } else if content_type == "javascript" {
-          query.push_str("o.content_category = 'javascript'");
-        }
+        let category = match content_type {
+          ContentType::Text => "o.content_category = 'text'",
+          ContentType::Image => "o.content_category = 'image'",
+          ContentType::Gif => "o.content_category = 'gif'",
+          ContentType::Audio => "o.content_category = 'audio'",
+          ContentType::Video => "o.content_category = 'video'",
+          ContentType::Html => "o.content_category = 'html'",
+          ContentType::Json => "o.content_category = 'json'",
+          ContentType::Namespace => "o.content_category = 'namespace'",
+          ContentType::Javascript => "o.content_category = 'javascript'",
+        };
+        query.push_str(category);
         if i < params.content_types.len() - 1 {
           query.push_str(" OR ");
         }
@@ -6585,27 +6537,19 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.charms.len() > 0 {
       query.push_str(format!(" AND (o.charms && array['{}'::varchar])", params.charms.join("'::varchar,'")).as_str());
     }
-    if params.sort_by == "newest" {
-      query.push_str(" ORDER BY o.sequence_number DESC");
-    } else if params.sort_by == "oldest" {
-      query.push_str(" ORDER BY o.sequence_number ASC");
-    } else if params.sort_by == "newest_sat" {
-      query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "oldest_sat" {
-      query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "rarest_sat" {
-      //query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "commonest_sat" {
-      //query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "biggest" {
-      query.push_str(" ORDER BY o.content_length DESC");
-    } else if params.sort_by == "smallest" {
-      query.push_str(" ORDER BY o.content_length ASC");
-    } else if params.sort_by == "highest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee DESC");
-    } else if params.sort_by == "lowest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee ASC");
-    }
+    let order_clause = match params.sort_by {
+      InscriptionSortBy::Newest => " ORDER BY o.sequence_number DESC",
+      InscriptionSortBy::Oldest => " ORDER BY o.sequence_number ASC",
+      InscriptionSortBy::NewestSat => " ORDER BY o.sat DESC",
+      InscriptionSortBy::OldestSat => " ORDER BY o.sat ASC",
+      InscriptionSortBy::RarestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::CommonestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::Biggest => " ORDER BY o.content_length DESC",
+      InscriptionSortBy::Smallest => " ORDER BY o.content_length ASC",
+      InscriptionSortBy::HighestFee => " ORDER BY o.genesis_fee DESC",
+      InscriptionSortBy::LowestFee => " ORDER BY o.genesis_fee ASC",
+    };
+    query.push_str(order_clause);
     query.push_str(") SELECT * from m");
     if params.page_size > 0 {
       query.push_str(format!(" LIMIT {}", params.page_size).as_str());
@@ -6686,12 +6630,12 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
 
   async fn get_on_chain_collections(pool: deadpool, params: CollectionQueryParams) -> anyhow::Result<Vec<OnChainCollectionSummary>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint).to_string();
+    let sort_by = params.sort_by.unwrap_or(CollectionSortBy::BiggestOnChainFootprint);
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
     //1. build query
     let mut query = r"
-      SELECT 
+      SELECT
         s.parents,
         array(
           SELECT io.number
@@ -6711,35 +6655,24 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         s.total_fees,
         s.total_on_chain_footprint
       from on_chain_collection_summary s".to_string();
-    if sort_by == "biggest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
-    } else if sort_by == "smallest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint ASC");
-    } else if sort_by == "most_volume" {
-      query.push_str(" ORDER BY s.total_volume DESC NULLS LAST");
-    } else if sort_by == "least_volume" {
-      query.push_str(" ORDER BY s.total_volume ASC");
-    } else if sort_by == "biggest_file_size" {
-      query.push_str(" ORDER BY s.total_inscription_size DESC NULLS LAST");
-    } else if sort_by == "smallest_file_size" {
-      query.push_str(" ORDER BY s.total_inscription_size ASC");
-    } else if sort_by == "biggest_creation_fee" {
-      query.push_str(" ORDER BY s.total_inscription_fees DESC NULLS LAST");
-    } else if sort_by == "smallest_creation_fee" {
-      query.push_str(" ORDER BY s.total_inscription_fees ASC");
-    } else if sort_by == "earliest_first_inscribed_date" {
-      query.push_str(" ORDER BY s.first_inscribed_date ASC");
-    } else if sort_by == "latest_first_inscribed_date" {
-      query.push_str(" ORDER BY s.first_inscribed_date DESC NULLS LAST");
-    } else if sort_by == "earliest_last_inscribed_date" {
-      query.push_str(" ORDER BY s.last_inscribed_date ASC");
-    } else if sort_by == "latest_last_inscribed_date" {
-      query.push_str(" ORDER BY s.last_inscribed_date DESC NULLS LAST");
-    } else if sort_by == "biggest_supply" {
-      query.push_str(" ORDER BY s.supply DESC NULLS LAST");
-    } else if sort_by == "smallest_supply" {
-      query.push_str(" ORDER BY s.supply ASC");
-    }
+
+    let order_clause = match sort_by {
+      CollectionSortBy::BiggestOnChainFootprint => " ORDER BY s.total_on_chain_footprint DESC NULLS LAST",
+      CollectionSortBy::SmallestOnChainFootprint => " ORDER BY s.total_on_chain_footprint ASC",
+      CollectionSortBy::MostVolume => " ORDER BY s.total_volume DESC NULLS LAST",
+      CollectionSortBy::LeastVolume => " ORDER BY s.total_volume ASC",
+      CollectionSortBy::BiggestFileSize => " ORDER BY s.total_inscription_size DESC NULLS LAST",
+      CollectionSortBy::SmallestFileSize => " ORDER BY s.total_inscription_size ASC",
+      CollectionSortBy::BiggestCreationFee => " ORDER BY s.total_inscription_fees DESC NULLS LAST",
+      CollectionSortBy::SmallestCreationFee => " ORDER BY s.total_inscription_fees ASC",
+      CollectionSortBy::EarliestFirstInscribedDate => " ORDER BY s.first_inscribed_date ASC",
+      CollectionSortBy::LatestFirstInscribedDate => " ORDER BY s.first_inscribed_date DESC NULLS LAST",
+      CollectionSortBy::EarliestLastInscribedDate => " ORDER BY s.last_inscribed_date ASC",
+      CollectionSortBy::LatestLastInscribedDate => " ORDER BY s.last_inscribed_date DESC NULLS LAST",
+      CollectionSortBy::BiggestSupply => " ORDER BY s.supply DESC NULLS LAST",
+      CollectionSortBy::SmallestSupply => " ORDER BY s.supply ASC",
+    };
+    query.push_str(order_clause);
     if page_size > 0 {
       query.push_str(format!(" LIMIT {}", page_size).as_str());
     }
@@ -6893,25 +6826,18 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.content_types.len() > 0 {
       query.push_str(" AND (");
       for (i, content_type) in params.content_types.iter().enumerate() {
-        if content_type == "text" {
-          query.push_str("o.content_category = 'text'");
-        } else if content_type == "image" {
-          query.push_str("o.content_category = 'image'");
-        } else if content_type == "gif" {
-          query.push_str("o.content_category = 'gif'");
-        } else if content_type == "audio" {
-          query.push_str("o.content_category = 'audio'");
-        } else if content_type == "video" {
-          query.push_str("o.content_category = 'video'");
-        } else if content_type == "html" {
-          query.push_str("o.content_category = 'html'");
-        } else if content_type == "json" {
-          query.push_str("o.content_category = 'json'");
-        } else if content_type == "namespace" {
-          query.push_str("o.content_category = 'namespace'");
-        } else if content_type == "javascript" {
-          query.push_str("o.content_category = 'javascript'");
-        }
+        let category = match content_type {
+          ContentType::Text => "o.content_category = 'text'",
+          ContentType::Image => "o.content_category = 'image'",
+          ContentType::Gif => "o.content_category = 'gif'",
+          ContentType::Audio => "o.content_category = 'audio'",
+          ContentType::Video => "o.content_category = 'video'",
+          ContentType::Html => "o.content_category = 'html'",
+          ContentType::Json => "o.content_category = 'json'",
+          ContentType::Namespace => "o.content_category = 'namespace'",
+          ContentType::Javascript => "o.content_category = 'javascript'",
+        };
+        query.push_str(category);
         if i < params.content_types.len() - 1 {
           query.push_str(" OR ");
         }
@@ -6924,27 +6850,19 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     if params.charms.len() > 0 {
       query.push_str(format!(" AND (o.charms && array['{}'::varchar])", params.charms.join("'::varchar,'")).as_str());
     }
-    if params.sort_by == "newest" {
-      query.push_str(" ORDER BY o.sequence_number DESC");
-    } else if params.sort_by == "oldest" {
-      query.push_str(" ORDER BY o.sequence_number ASC");
-    } else if params.sort_by == "newest_sat" {
-      query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "oldest_sat" {
-      query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "rarest_sat" {
-      //query.push_str(" ORDER BY o.sat ASC");
-    } else if params.sort_by == "commonest_sat" {
-      //query.push_str(" ORDER BY o.sat DESC");
-    } else if params.sort_by == "biggest" {
-      query.push_str(" ORDER BY o.content_length DESC");
-    } else if params.sort_by == "smallest" {
-      query.push_str(" ORDER BY o.content_length ASC");
-    } else if params.sort_by == "highest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee DESC");
-    } else if params.sort_by == "lowest_fee" {
-      query.push_str(" ORDER BY o.genesis_fee ASC");
-    }
+    let order_clause = match params.sort_by {
+      InscriptionSortBy::Newest => " ORDER BY o.sequence_number DESC",
+      InscriptionSortBy::Oldest => " ORDER BY o.sequence_number ASC",
+      InscriptionSortBy::NewestSat => " ORDER BY o.sat DESC",
+      InscriptionSortBy::OldestSat => " ORDER BY o.sat ASC",
+      InscriptionSortBy::RarestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::CommonestSat => "",  // No sorting implemented yet
+      InscriptionSortBy::Biggest => " ORDER BY o.content_length DESC",
+      InscriptionSortBy::Smallest => " ORDER BY o.content_length ASC",
+      InscriptionSortBy::HighestFee => " ORDER BY o.genesis_fee DESC",
+      InscriptionSortBy::LowestFee => " ORDER BY o.genesis_fee ASC",
+    };
+    query.push_str(order_clause);
     query.push_str(") SELECT * from m");
     if params.page_size > 0 {
       query.push_str(format!(" LIMIT {}", params.page_size).as_str());
@@ -6967,7 +6885,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
 
   async fn get_galleries_summary(pool: deadpool, params: GalleryQueryParams) -> anyhow::Result<Vec<GallerySummary>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or(GallerySortBy::BiggestOnChainFootprint).to_string();
+    let sort_by = params.sort_by.unwrap_or(GallerySortBy::BiggestOnChainFootprint);
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
 
@@ -6989,41 +6907,25 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         s.boost_count
       from gallery_summary s".to_string();
 
-    if sort_by == "biggest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
-    } else if sort_by == "smallest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint ASC");
-    } else if sort_by == "most_volume" {
-      query.push_str(" ORDER BY s.total_volume DESC NULLS LAST");
-    } else if sort_by == "least_volume" {
-      query.push_str(" ORDER BY s.total_volume ASC");
-    } else if sort_by == "biggest_file_size" {
-      query.push_str(" ORDER BY s.total_inscription_size DESC NULLS LAST");
-    } else if sort_by == "smallest_file_size" {
-      query.push_str(" ORDER BY s.total_inscription_size ASC");
-    } else if sort_by == "biggest_creation_fee" {
-      query.push_str(" ORDER BY s.total_inscription_fees DESC NULLS LAST");
-    } else if sort_by == "smallest_creation_fee" {
-      query.push_str(" ORDER BY s.total_inscription_fees ASC");
-    } else if sort_by == "earliest_first_inscribed_date" {
-      query.push_str(" ORDER BY s.first_inscribed_date ASC");
-    } else if sort_by == "latest_first_inscribed_date" {
-      query.push_str(" ORDER BY s.first_inscribed_date DESC NULLS LAST");
-    } else if sort_by == "earliest_last_inscribed_date" {
-      query.push_str(" ORDER BY s.last_inscribed_date ASC");
-    } else if sort_by == "latest_last_inscribed_date" {
-      query.push_str(" ORDER BY s.last_inscribed_date DESC NULLS LAST");
-    } else if sort_by == "biggest_supply" {
-      query.push_str(" ORDER BY s.supply DESC NULLS LAST");
-    } else if sort_by == "smallest_supply" {
-      query.push_str(" ORDER BY s.supply ASC");
-    } else if sort_by == "most_boosts" {
-      query.push_str(" ORDER BY s.boost_count DESC NULLS LAST");
-    } else if sort_by == "least_boosts" {
-      query.push_str(" ORDER BY s.boost_count ASC");
-    } else {
-      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
-    }
+    let order_clause = match sort_by {
+      GallerySortBy::BiggestOnChainFootprint => " ORDER BY s.total_on_chain_footprint DESC NULLS LAST",
+      GallerySortBy::SmallestOnChainFootprint => " ORDER BY s.total_on_chain_footprint ASC",
+      GallerySortBy::MostVolume => " ORDER BY s.total_volume DESC NULLS LAST",
+      GallerySortBy::LeastVolume => " ORDER BY s.total_volume ASC",
+      GallerySortBy::BiggestFileSize => " ORDER BY s.total_inscription_size DESC NULLS LAST",
+      GallerySortBy::SmallestFileSize => " ORDER BY s.total_inscription_size ASC",
+      GallerySortBy::BiggestCreationFee => " ORDER BY s.total_inscription_fees DESC NULLS LAST",
+      GallerySortBy::SmallestCreationFee => " ORDER BY s.total_inscription_fees ASC",
+      GallerySortBy::EarliestFirstInscribedDate => " ORDER BY s.first_inscribed_date ASC",
+      GallerySortBy::LatestFirstInscribedDate => " ORDER BY s.first_inscribed_date DESC NULLS LAST",
+      GallerySortBy::EarliestLastInscribedDate => " ORDER BY s.last_inscribed_date ASC",
+      GallerySortBy::LatestLastInscribedDate => " ORDER BY s.last_inscribed_date DESC NULLS LAST",
+      GallerySortBy::BiggestSupply => " ORDER BY s.supply DESC NULLS LAST",
+      GallerySortBy::SmallestSupply => " ORDER BY s.supply ASC",
+      GallerySortBy::MostBoosts => " ORDER BY s.boost_count DESC NULLS LAST",
+      GallerySortBy::LeastBoosts => " ORDER BY s.boost_count ASC",
+    };
+    query.push_str(order_clause);
 
     query.push_str(format!(" LIMIT {} OFFSET {}", page_size, page_number * page_size).as_str());
 
@@ -7054,7 +6956,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
 
   async fn get_gallery_inscriptions(pool: deadpool, params: GalleryQueryParams) -> anyhow::Result<Vec<FullMetadata>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or(GallerySortBy::BiggestOnChainFootprint).to_string();
+    let sort_by = params.sort_by.unwrap_or(GallerySortBy::BiggestOnChainFootprint);
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
 
@@ -7063,32 +6965,31 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         SELECT DISTINCT gallery_id
         FROM inscription_galleries
       )
-      SELECT o.*, s.boost_count, s.total_volume, s.total_fees, s.total_on_chain_footprint, s.supply, s.total_inscription_size, s.total_inscription_fees
+      SELECT o.*, s.boost_count, s.total_volume, s.total_fees, s.total_on_chain_footprint, s.supply, s.total_inscription_size, s.total_inscription_fees, s.first_inscribed_date, s.last_inscribed_date
       FROM gallery_ids g
       LEFT JOIN ordinals_full_v o ON g.gallery_id=o.id
       LEFT JOIN gallery_summary s ON g.gallery_id=s.gallery_id
     ".to_string();
 
-    // Add sorting
-    if sort_by == "biggest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
-    } else if sort_by == "smallest_on_chain_footprint" {
-      query.push_str(" ORDER BY s.total_on_chain_footprint ASC");
-    } else if sort_by == "most_volume" {
-      query.push_str(" ORDER BY s.total_volume DESC NULLS LAST");
-    } else if sort_by == "least_volume" {
-      query.push_str(" ORDER BY s.total_volume ASC");
-    } else if sort_by == "most_boosts" {
-      query.push_str(" ORDER BY s.boost_count DESC NULLS LAST");
-    } else if sort_by == "least_boosts" {
-      query.push_str(" ORDER BY s.boost_count ASC");
-    } else if sort_by == "biggest_supply" {
-      query.push_str(" ORDER BY s.supply DESC NULLS LAST");
-    } else if sort_by == "smallest_supply" {
-      query.push_str(" ORDER BY s.supply ASC");
-    } else {
-      query.push_str(" ORDER BY s.total_on_chain_footprint DESC NULLS LAST");
-    }
+    let order_clause = match sort_by {
+      GallerySortBy::BiggestOnChainFootprint => " ORDER BY s.total_on_chain_footprint DESC NULLS LAST",
+      GallerySortBy::SmallestOnChainFootprint => " ORDER BY s.total_on_chain_footprint ASC",
+      GallerySortBy::MostVolume => " ORDER BY s.total_volume DESC NULLS LAST",
+      GallerySortBy::LeastVolume => " ORDER BY s.total_volume ASC",
+      GallerySortBy::BiggestFileSize => " ORDER BY s.total_inscription_size DESC NULLS LAST",
+      GallerySortBy::SmallestFileSize => " ORDER BY s.total_inscription_size ASC",
+      GallerySortBy::BiggestCreationFee => " ORDER BY s.total_inscription_fees DESC NULLS LAST",
+      GallerySortBy::SmallestCreationFee => " ORDER BY s.total_inscription_fees ASC",
+      GallerySortBy::EarliestFirstInscribedDate => " ORDER BY s.first_inscribed_date ASC",
+      GallerySortBy::LatestFirstInscribedDate => " ORDER BY s.first_inscribed_date DESC NULLS LAST",
+      GallerySortBy::EarliestLastInscribedDate => " ORDER BY s.last_inscribed_date ASC",
+      GallerySortBy::LatestLastInscribedDate => " ORDER BY s.last_inscribed_date DESC NULLS LAST",
+      GallerySortBy::MostBoosts => " ORDER BY s.boost_count DESC NULLS LAST",
+      GallerySortBy::LeastBoosts => " ORDER BY s.boost_count ASC",
+      GallerySortBy::BiggestSupply => " ORDER BY s.supply DESC NULLS LAST",
+      GallerySortBy::SmallestSupply => " ORDER BY s.supply ASC",
+    };
+    query.push_str(order_clause);
 
     query.push_str(format!(" LIMIT {} OFFSET {}", page_size, page_number * page_size).as_str());
 
@@ -7253,54 +7154,41 @@ let full_query = Self::create_inscription_query_string(base_query, params);
 
   async fn get_blocks(pool: deadpool, params: BlockQueryParams) -> anyhow::Result<Vec<CombinedBlockStats>> {
     let conn = pool.get().await?;
-    let sort_by = params.sort_by.unwrap_or(BlockSortBy::Newest).to_string();
+    let sort_by = params.sort_by.unwrap_or(BlockSortBy::Newest);
     let page_size = std::cmp::min(params.page_size.unwrap_or(20), 100);
     let page_number = params.page_number.unwrap_or(0);
     //1. build query
     let mut query = r"
-      select b.*, 
-      i.block_inscription_count, 
-      i.block_inscription_size, 
-      i.block_inscription_fees, 
-      i.block_transfer_count, 
-      i.block_transfer_size, 
-      i.block_transfer_fees, 
-      i.block_volume from blockstats b 
-      left join inscription_blockstats i 
+      select b.*,
+      i.block_inscription_count,
+      i.block_inscription_size,
+      i.block_inscription_fees,
+      i.block_transfer_count,
+      i.block_transfer_size,
+      i.block_transfer_fees,
+      i.block_volume from blockstats b
+      left join inscription_blockstats i
       on b.block_number=i.block_number".to_string();
-    if sort_by == "newest" {
-      query.push_str(" ORDER BY b.block_number DESC");
-    } else if sort_by == "oldest" {
-      query.push_str(" ORDER BY b.block_number ASC");
-    } else if sort_by == "most_txs" {
-      query.push_str(" ORDER BY b.block_tx_count DESC");
-    } else if sort_by == "least_txs" {
-      query.push_str(" ORDER BY b.block_tx_count ASC");
-    } else if sort_by == "most_inscriptions" {
-      query.push_str(" ORDER BY i.block_inscription_count DESC NULLS LAST");
-    } else if sort_by == "least_inscriptions" {
-      query.push_str(" WHERE i.block_inscription_count > 0 ORDER BY i.block_inscription_count ASC");
-    } else if sort_by == "biggest_block" {
-      query.push_str(" ORDER BY b.block_size DESC");
-    } else if sort_by == "smallest_block" {
-      query.push_str(" ORDER BY b.block_size ASC");
-    } else if sort_by == "biggest_total_inscriptions_size" {
-      query.push_str(" ORDER BY i.block_inscription_size DESC NULLS LAST");
-    } else if sort_by == "smallest_total_inscriptions_size" {
-      query.push_str(" WHERE i.block_inscription_size > 0 ORDER BY i.block_inscription_size ASC");
-    } else if sort_by == "highest_total_fees" {
-      query.push_str(" ORDER BY b.block_fees DESC");
-    } else if sort_by == "lowest_total_fees" {
-      query.push_str(" ORDER BY b.block_fees ASC");
-    } else if sort_by == "highest_inscription_fees" {
-      query.push_str(" ORDER BY i.block_inscription_fees DESC NULLS LAST");
-    } else if sort_by == "lowest_inscription_fees" {
-      query.push_str(" WHERE i.block_inscription_fees > 0 ORDER BY i.block_inscription_fees ASC");
-    } else if sort_by == "most_volume" {
-      query.push_str(" ORDER BY i.block_volume DESC NULLS LAST");
-    } else if sort_by == "least_volume" {
-      query.push_str(" WHERE i.block_volume > 0 ORDER BY i.block_volume ASC");
-    }
+
+    let order_clause = match sort_by {
+      BlockSortBy::Newest => " ORDER BY b.block_number DESC",
+      BlockSortBy::Oldest => " ORDER BY b.block_number ASC",
+      BlockSortBy::MostTxs => " ORDER BY b.block_tx_count DESC",
+      BlockSortBy::LeastTxs => " ORDER BY b.block_tx_count ASC",
+      BlockSortBy::MostInscriptions => " ORDER BY i.block_inscription_count DESC NULLS LAST",
+      BlockSortBy::LeastInscriptions => " WHERE i.block_inscription_count > 0 ORDER BY i.block_inscription_count ASC",
+      BlockSortBy::BiggestBlock => " ORDER BY b.block_size DESC",
+      BlockSortBy::SmallestBlock => " ORDER BY b.block_size ASC",
+      BlockSortBy::BiggestTotalInscriptionsSize => " ORDER BY i.block_inscription_size DESC NULLS LAST",
+      BlockSortBy::SmallestTotalInscriptionsSize => " WHERE i.block_inscription_size > 0 ORDER BY i.block_inscription_size ASC",
+      BlockSortBy::HighestTotalFees => " ORDER BY b.block_fees DESC",
+      BlockSortBy::LowestTotalFees => " ORDER BY b.block_fees ASC",
+      BlockSortBy::HighestInscriptionFees => " ORDER BY i.block_inscription_fees DESC NULLS LAST",
+      BlockSortBy::LowestInscriptionFees => " WHERE i.block_inscription_fees > 0 ORDER BY i.block_inscription_fees ASC",
+      BlockSortBy::MostVolume => " ORDER BY i.block_volume DESC NULLS LAST",
+      BlockSortBy::LeastVolume => " WHERE i.block_volume > 0 ORDER BY i.block_volume ASC",
+    };
+    query.push_str(order_clause);
 
     if page_size > 0 {
       query.push_str(format!(" LIMIT {}", page_size).as_str());
