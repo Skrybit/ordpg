@@ -8815,7 +8815,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
                 min(o.number) AS range_start,
                 max(o.number) AS range_end
         FROM inscription_galleries g
-        JOIN ordinals o ON g.inscription_id = o.id
+        LEFT JOIN ordinals o ON g.inscription_id = o.id
         GROUP BY g.gallery_id),
       b AS
         (SELECT g.gallery_id,
