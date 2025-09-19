@@ -2191,7 +2191,7 @@ impl Vermilion {
           if symbol == "btc-name" {
             continue;
           }
-          if symbol == "rare-sats" || symbol == "uncommons" {
+          if symbol == "rare-sats" || symbol == "uncommons" || symbol == "cursed" {
             continue;
           }
           if symbol == "sub-100" || symbol == "sub-1k" || symbol == "sub-5k"|| symbol == "sub-10k" || symbol == "sub-100k"  {
@@ -2258,7 +2258,7 @@ impl Vermilion {
           if symbol.starts_with("brc20_") {
             continue;
           }
-          if symbol == "rare-sats" {
+          if symbol == "rare-sats" || symbol == "cursed" {
             continue;
           }
           collections.push(symbol.to_string());
