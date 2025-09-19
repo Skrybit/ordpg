@@ -8,7 +8,7 @@ use crate::subcommand::server;
 use crate::index::fetcher::Fetcher;
 use crate::subcommand::vermilion::api::{
   TxidParam, serve_openapi, serve_scalar, ApiError, ContentResponse,
-  InscriptionNumber, BlockNumber, SatNumber, Sha256Hash, 
+  InscriptionNumber, BlockNumber, SatNumber, Sha256Hash,
   BitcoinAddress, CollectionSymbol, ParentList, SearchQuery,
   SatributeType, CharmType, ContentType, InscriptionSortBy, CollectionSortBy, GallerySortBy, BlockSortBy,
   set_comma_separated_arrays
@@ -20,7 +20,7 @@ use serde::Serialize;
 use sha256::digest;
 
 use axum::{
-  Json, 
+  Json,
   Router,
   extract::{Path, State},
   body::Body,
@@ -156,7 +156,7 @@ pub(crate) struct Vermilion {
 }
 
 #[derive(Clone, Serialize)]
-pub struct Metadata {  
+pub struct Metadata {
   sequence_number: i64,
   id: String,
   content_length: Option<i64>,
@@ -406,27 +406,83 @@ where
     .map_err(|e| serde::de::Error::custom(format!("Parse error: {}", e)))
 }
 
+fn deserialize_comma_separated_and_repeated<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+  D: Deserializer<'de>,
+  T: std::str::FromStr,
+  T::Err: std::fmt::Display,
+{
+  use serde::de::{SeqAccess, Visitor};
+  use std::fmt;
+
+  struct VecVisitor<T>(std::marker::PhantomData<T>);
+
+  impl<'de, T> Visitor<'de> for VecVisitor<T>
+  where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+  {
+    type Value = Vec<T>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      formatter.write_str("a string or sequence of strings")
+    }
+
+    // Handle single string (comma-separated)
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+      E: serde::de::Error,
+    {
+      value
+      .split(',')
+      .map(|item| item.trim().parse::<T>())
+      .collect::<Result<Vec<T>, _>>()
+      .map_err(|e| E::custom(format!("Parse error: {}", e)))
+    }
+
+    // Handle sequence (repeated parameters)
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+      A: SeqAccess<'de>,
+    {
+      let mut vec = Vec::new();
+      while let Some(value) = seq.next_element::<String>()? {
+        // Each element might also be comma-separated
+        let parsed: Vec<T> = value
+        .split(',')
+        .map(|item| item.trim().parse::<T>())
+        .collect::<Result<Vec<T>, _>>()
+        .map_err(|e| serde::de::Error::custom(format!("Parse error: {}", e)))?;
+        vec.extend(parsed);
+      }
+      Ok(vec)
+    }
+  }
+
+  deserializer.deserialize_any(VecVisitor(std::marker::PhantomData))
+}
+
 #[derive(Deserialize, JsonSchema)]
 pub struct InscriptionQueryParams {
   /// Content types to filter by
   #[schemars(description = "Content types to filter inscriptions by")]
-  #[serde(default, deserialize_with = "deserialize_comma_separated_fromstr")]
+  #[serde(default, deserialize_with = "deserialize_comma_separated_and_repeated")]
   content_types: Vec<ContentType>,
-  
+
   /// Satributes to filter by
   #[schemars(description = "Satributes to filter inscriptions by")]
-  #[serde(default, deserialize_with = "deserialize_comma_separated_fromstr")]
+  #[serde(default, deserialize_with = "deserialize_comma_separated_and_repeated")]
   satributes: Vec<SatributeType>,
-  
+
   /// Charms to filter by
   #[schemars(description = "Charms to filter inscriptions by")]
-  #[serde(default, deserialize_with = "deserialize_comma_separated_fromstr")]
+  #[serde(default, deserialize_with = "deserialize_comma_separated_and_repeated")]
   charms: Vec<CharmType>,
-  
+
   /// Sort order for the results
   #[schemars(description = "Sort order for inscription results")]
   sort_by: Option<InscriptionSortBy>,
-  
+
   /// Page number for pagination (0-based)
   #[schemars(
     description = "Page number for pagination, starting from 0",
@@ -434,7 +490,7 @@ pub struct InscriptionQueryParams {
     range(min = 0)
   )]
   page_number: Option<usize>,
-  
+
   /// Number of items per page (max 100)
   #[schemars(
     description = "Number of items per page, maximum 100",
@@ -471,7 +527,7 @@ pub struct CollectionQueryParams {
   /// Sort order for collection results
   #[schemars(description = "Sort order for collection results")]
   sort_by: Option<CollectionSortBy>,
-  
+
   /// Page number for pagination (0-based)
   #[schemars(
     description = "Page number for pagination, starting from 0",
@@ -479,7 +535,7 @@ pub struct CollectionQueryParams {
     range(min = 0)
   )]
   page_number: Option<usize>,
-  
+
   /// Number of items per page (max 100)
   #[schemars(
     description = "Number of items per page, maximum 100",
@@ -517,7 +573,7 @@ pub struct BlockQueryParams {
   /// Sort order for block results
   #[schemars(description = "Sort order for block results")]
   sort_by: Option<BlockSortBy>,
-  
+
   /// Page number for pagination (0-based)
   #[schemars(
     description = "Page number for pagination, starting from 0",
@@ -525,7 +581,7 @@ pub struct BlockQueryParams {
     range(min = 0)
   )]
   page_number: Option<usize>,
-  
+
   /// Number of items per page (max 100)
   #[schemars(
     description = "Number of items per page, maximum 100",
@@ -544,7 +600,7 @@ pub struct PaginationParams {
     range(min = 0)
   )]
   page_number: Option<usize>,
-  
+
   /// Number of items per page (max 100)
   #[schemars(
     description = "Number of items per page, maximum 100",
@@ -655,11 +711,11 @@ pub struct Collection {
 
 #[derive(Serialize, JsonSchema)]
 pub struct CollectionSummary {
-  collection_symbol: String, 
+  collection_symbol: String,
   name: Option<String>,
   description: Option<String>,
-  twitter: Option<String>, 
-  discord: Option<String>, 
+  twitter: Option<String>,
+  discord: Option<String>,
   website: Option<String>,
   total_inscription_fees: Option<i64>,
   total_inscription_size: Option<i64>,
@@ -677,7 +733,7 @@ pub struct CollectionSummary {
 
 #[derive(Serialize, JsonSchema)]
 pub struct CollectionHolders {
-  collection_symbol: String, 
+  collection_symbol: String,
   collection_holder_count: Option<i64>,
   address: Option<String>,
   address_count: Option<i64>,
@@ -779,7 +835,7 @@ pub struct FullMetadata {
 }
 
 #[derive(Serialize, JsonSchema)]
-pub struct BoostFullMetadata {  
+pub struct BoostFullMetadata {
   sequence_number: i64,
   id: String,
   content_length: Option<i64>,
@@ -874,7 +930,7 @@ impl Vermilion {
     let mut fast_count = 0;
     let mut fast_total = Duration::new(0, 0);
     let mut total = Duration::new(0, 0);
-    
+
     for (name, duration) in timings {
       total += duration;
       if duration >= threshold {
@@ -884,15 +940,15 @@ impl Vermilion {
         fast_total += duration;
       }
     }
-    
+
     // Add aggregated fast operations
     if fast_count > 0 {
       parts.push(format!("{} fast ops: {:?}", fast_count, fast_total));
     }
-    
+
     // Add total
     parts.push(format!("TOTAL: {:?}", total));
-    
+
     log::info!("{}: {}", operation, parts.join(" - "));
   }
 
@@ -906,12 +962,12 @@ impl Vermilion {
     if self.run_api_server_only {//If only running api server, block here, early return on ctrl-c
       let rt = Runtime::new().unwrap();
       rt.block_on(async {
-        loop {            
+        loop {
           if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
             break;
           }
           tokio::time::sleep(Duration::from_secs(10)).await;
-        }          
+        }
       });
       vermilion_handle.graceful_shutdown(Some(Duration::from_millis(1000)));
       return Ok(None);
@@ -972,7 +1028,7 @@ impl Vermilion {
     Ok(None)
   }
 
-  pub(crate) fn run_vermilion_server(self, settings: Settings, handle: axum_server::Handle) -> JoinHandle<()> {    
+  pub(crate) fn run_vermilion_server(self, settings: Settings, handle: axum_server::Handle) -> JoinHandle<()> {
     let verm_server_thread = thread::spawn(move ||{
       let rt = Runtime::new().unwrap();
       rt.block_on(async move {
@@ -983,7 +1039,7 @@ impl Vermilion {
             return;
           }
         };
-        
+
         let bitcoin_rpc_client = match settings.bitcoin_rpc_client(None) {
           Ok(client) => Arc::new(client),
           Err(err) => {
@@ -991,7 +1047,7 @@ impl Vermilion {
             return;
           }
         };
-        
+
         let server_config = ApiServerConfig {
           deadpool: deadpool,
           bitcoin_rpc_client: bitcoin_rpc_client.clone(),
@@ -1018,7 +1074,7 @@ impl Vermilion {
           .api_route("/inscription_metadata_number/{number}", get(Self::inscription_metadata_number))
           .api_route("/inscription_edition/{inscription_id}", get(Self::inscription_edition))
           .api_route("/inscription_edition_number/{number}", get(Self::inscription_edition_number))
-          .api_route("/inscription_editions_sha256/{sha256}", get(Self::inscription_editions_sha256))          
+          .api_route("/inscription_editions_sha256/{sha256}", get(Self::inscription_editions_sha256))
           .api_route("/inscription_children/{inscription_id}", get_with(Self::inscription_children, set_comma_separated_arrays))
           .api_route("/inscription_children_number/{number}", get_with(Self::inscription_children_number, set_comma_separated_arrays))
           .api_route("/inscription_referenced_by/{inscription_id}", get_with(Self::inscription_referenced_by, set_comma_separated_arrays))
@@ -1032,7 +1088,7 @@ impl Vermilion {
           .api_route("/comment/{inscription_id}", get(Self::comment))
           .api_route("/comment_number/{number}", get(Self::comment_number))
           .api_route("/inscription_satribute_editions/{inscription_id}", get(Self::inscription_satribute_editions))
-          .api_route("/inscription_satribute_editions_number/{number}", get(Self::inscription_satribute_editions_number)) 
+          .api_route("/inscription_satribute_editions_number/{number}", get(Self::inscription_satribute_editions_number))
           .api_route("/inscriptions_in_block/{block}", get_with(Self::inscriptions_in_block, set_comma_separated_arrays))
           .api_route("/inscriptions", get_with(Self::inscriptions, set_comma_separated_arrays))
           .api_route("/random_inscription", get(Self::random_inscription))
@@ -1052,9 +1108,9 @@ impl Vermilion {
           .api_route("/inscription_collection_data_number/{number}", get(Self::inscription_collection_data_number))
           .api_route("/block_statistics/{block}", get(Self::block_statistics))
           .api_route("/sat_block_statistics/{block}", get(Self::sat_block_statistics))
-          .api_route("/blocks", get(Self::blocks))          
+          .api_route("/blocks", get(Self::blocks))
           .api_route("/collections", get(Self::collections))
-          .api_route("/collection_summary/{collection_symbol}", get(Self::collection_summary))          
+          .api_route("/collection_summary/{collection_symbol}", get(Self::collection_summary))
           .api_route("/collection_holders/{collection_symbol}", get(Self::collection_holders))
           .api_route("/inscriptions_in_collection/{collection_symbol}", get_with(Self::inscriptions_in_collection, set_comma_separated_arrays))
           .api_route("/on_chain_collections", get(Self::on_chain_collections))
@@ -1084,8 +1140,8 @@ impl Vermilion {
               })
               .on_response(|res: &Response<Body>, latency: Duration, _span: &Span| {
                 if latency.as_millis() > 10 {
-                  tracing::event!(TraceLevel::INFO, "Finished processing SLOW request latency={:?} status={:?}", latency, res.status());                    
-                } else {                    
+                  tracing::event!(TraceLevel::INFO, "Finished processing SLOW request latency={:?} status={:?}", latency, res.status());
+                } else {
                   tracing::event!(TraceLevel::DEBUG, "Finished processing request latency={:?} status={:?}", latency, res.status());
                 }
               })
@@ -1213,7 +1269,7 @@ impl Vermilion {
             return;
           }
         };
-        
+
         // Build connection string for LISTEN/NOTIFY
         let conn_str = format!(
           "host={} dbname={} user={} password={}",
@@ -1222,7 +1278,7 @@ impl Vermilion {
           settings.db_user().unwrap_or("postgres"),
           settings.db_password().unwrap_or("")
         );
-        
+
         // Set up dedicated listener connection for notifications
         let (client, mut connection) = match tokio_postgres::connect(&conn_str, NoTls).await {
           Ok((client, connection)) => (client, connection),
@@ -1231,7 +1287,7 @@ impl Vermilion {
             return;
           }
         };
-        
+
         // Set up notification stream
         let mut stream = stream::poll_fn(move |cx| connection.poll_message(cx))
           .map_err(|e| println!("ERROR: !! Postgres listen connection error: {} !!", e));
@@ -1303,7 +1359,7 @@ impl Vermilion {
             }
           }
         });
-        
+
         if let Err(err) = client.execute("LISTEN trending_weights_update", &[]).await {
           println!("Error setting up postgres LISTEN: {:?}", err);
           return;
@@ -1324,18 +1380,18 @@ impl Vermilion {
       Ok(Some(height)) => height.n() as i64,
       _ => return false,
     };
-    
+
     // Get latest block from postgres indexer using fast blockstats query
     let conn = match pool.get().await {
       Ok(conn) => conn,
       Err(_) => return false,
     };
-    
+
     let postgres_height = match conn.query_one("SELECT MAX(block_number) as latest_block FROM blockstats", &[]).await {
       Ok(row) => row.get::<_, Option<i64>>("latest_block").unwrap_or(0),
       Err(_) => return false,
     };
-    
+
     // Consider "at tip" if within 2 blocks of main index
     let blocks_behind = index_height.saturating_sub(postgres_height);
     blocks_behind <= 2
@@ -1505,13 +1561,13 @@ impl Vermilion {
           let t6 = Instant::now();
 
           // 7. Increment block number
-          log::info!("Indexed block: {:?} - Height check: {:?} - Block stats: {:?} - Runes: {:?} - Inscriptions: {:?} - Transfers: {:?} - Commit: {:?} - Total: {:?}", 
-            block_number, 
-            t1.duration_since(t0), 
-            t2.duration_since(t1), 
-            t3.duration_since(t2), 
-            t4.duration_since(t3), 
-            t5.duration_since(t4), 
+          log::info!("Indexed block: {:?} - Height check: {:?} - Block stats: {:?} - Runes: {:?} - Inscriptions: {:?} - Transfers: {:?} - Commit: {:?} - Total: {:?}",
+            block_number,
+            t1.duration_since(t0),
+            t2.duration_since(t1),
+            t3.duration_since(t2),
+            t4.duration_since(t3),
+            t5.duration_since(t4),
             t6.duration_since(t5),
             t6.duration_since(t0)
           );
@@ -1528,7 +1584,7 @@ impl Vermilion {
             let name = format!("{}.{}: {}", timing.0, timing.1, timing.2);
             (name, duration)
           }).collect();
-          
+
           if !trigger_timing_vec.is_empty() {
             let borrowed_vec: Vec<(&str, Duration)> = trigger_timing_vec.iter()
               .map(|(name, duration)| (name.as_str(), *duration))
@@ -1645,7 +1701,7 @@ impl Vermilion {
     let t1 = Instant::now();
     let transfers = index.get_transfers_by_block_height(block_number)
       .with_context(|| format!("Failed to get transfers for block {}", block_number))?;
-    
+
     if transfers.len() == 0 {
       log::debug!("No transfers found for block height: {:?}, skipping", block_number);
       Self::bulk_insert_inscription_blockstats(&deadpool_tx, block_number as i64).await
@@ -1662,7 +1718,7 @@ impl Vermilion {
     tx_id_list.append(&mut prev_tx_id_list);
     tx_id_list.retain(|x| *x != Hash::all_zeros());
     let tx_id_list: Vec<Txid> = tx_id_list.into_iter().unique().collect();
-    
+
     let txs = match fetcher.get_transactions(tx_id_list.clone()).await {
       Ok(txs) => {
         txs.into_iter().map(|tx| Some(tx)).collect::<Vec<_>>()
@@ -1678,7 +1734,7 @@ impl Vermilion {
             };
             let tx = match fetcher.get_transactions(vec![tx_id]).await {
               Ok(mut tx) => Some(tx.pop().unwrap()),
-              Err(e) => {                      
+              Err(e) => {
                 anyhow::bail!("ERROR: skipped non-miner transfer: {:?} - {:?}, trying again in a minute", tx_id, e);
               }
             };
@@ -1687,7 +1743,7 @@ impl Vermilion {
           txs
         } else {
           anyhow::bail!("Unknown error getting transfer transactions for block height: {:?} - {:?}", block_number, e);
-        }              
+        }
       }
     };
 
@@ -1698,7 +1754,7 @@ impl Vermilion {
       }
     }
 
-    let t3 = Instant::now();          
+    let t3 = Instant::now();
     let mut seq_point_transfer_details = Vec::new();
     for (sequence_number, tx_offset, old_satpoint, satpoint) in transfers {
       //1. Get ordinal receive address
@@ -1798,7 +1854,7 @@ impl Vermilion {
               None => txin.witness.nth(0).and_then(|bytes| bytes.last().cloned())
             };
             price = match last_sig_byte {
-              Some(last_sig_byte) => {                      
+              Some(last_sig_byte) => {
                 // IF SIG_SINGLE|ANYONECANPAY (0x83), Then price is on same output index as the ordinal's input index
                 if last_sig_byte == 0x83 {
                   price = match tx.output.get(input_index) {
@@ -1843,7 +1899,7 @@ impl Vermilion {
             };
           }
         }
-        
+
         //3. Get fee
         let tx_fee = index.get_tx_fee(satpoint.outpoint.txid)
           .with_context(|| format!("Failed to get tx fee for {:?}", satpoint.outpoint.txid))?;
@@ -1924,9 +1980,9 @@ impl Vermilion {
       Ok(txs) => txs,
       Err(error) => {
         println!("Error getting inscription transactions for block: {}: {:?}", block_number, error);
-        if  error.to_string().contains("Failed to fetch raw transaction") || 
-            error.to_string().contains("connection closed") || 
-            error.to_string().contains("error trying to connect") || 
+        if  error.to_string().contains("Failed to fetch raw transaction") ||
+            error.to_string().contains("connection closed") ||
+            error.to_string().contains("error trying to connect") ||
             error.to_string().contains("end of file") {
           anyhow::bail!("Retrying inscriptions in block {} due to known fetch transaction error: {:?}", block_number, error);
         }
@@ -1977,31 +2033,31 @@ impl Vermilion {
     for (inscription_id, inscription, inscribed_by_address) in id_inscriptions {
       let (metadata, sat_metadata, mut gallery) = Self::extract_ordinal_metadata(index.clone(), inscription_id, inscription.clone(), inscribed_by_address)
         .with_context(|| format!("Failed to extract metadata for inscription id: {}", inscription_id))?;
-      metadata_vec.push(metadata);            
+      metadata_vec.push(metadata);
       match sat_metadata {
         Some(sat_metadata) => {
           sat_metadata_vec.push(sat_metadata);
         },
-        None => {}                
+        None => {}
       }
       gallery_vec.append(&mut gallery);
     }
-    
+
     //4. Insert metadata
     let t3 = Instant::now();
     Self::bulk_insert_metadata(&deadpool_tx, metadata_vec.clone()).await
       .map_err(|err| anyhow::anyhow!("Failed to insert metadata for block {}: {}", block_number, err))?;
-    
+
     //5. Insert editions
     let t4 = Instant::now();
     Self::bulk_insert_editions(&deadpool_tx, metadata_vec.clone()).await
       .map_err(|err| anyhow::anyhow!("Failed to insert editions for block {}: {}", block_number, err))?;
-    
+
     //6. Insert sat metadata
     let t5 = Instant::now();
     Self::bulk_insert_sat_metadata(&deadpool_tx, sat_metadata_vec.clone()).await
       .map_err(|err| anyhow::anyhow!("Failed to insert sat metadata for block {}: {}", block_number, err))?;
-    
+
     //7. Insert satributes
     let t6 = Instant::now();
     let mut satributes_vec = Vec::new();
@@ -2025,12 +2081,12 @@ impl Vermilion {
     }
     Self::bulk_insert_satributes(&deadpool_tx, satributes_vec).await
       .map_err(|err| anyhow::anyhow!("Failed to insert satributes for block {}: {}", block_number, err))?;
-    
+
     //8. Insert galleries
     let t7 = Instant::now();
     Self::bulk_insert_gallery_metadata(&deadpool_tx, gallery_vec).await
       .map_err(|err| anyhow::anyhow!("Failed to insert galleries for block {}: {}", block_number, err))?;
-    
+
     //9. Upload content to db
     let t8 = Instant::now();
     let sequence_numbers = metadata_vec.iter().map(|m| m.sequence_number).collect::<Vec<_>>();
@@ -2301,7 +2357,7 @@ impl Vermilion {
       }
       if i % 100 == 0 {
         log::info!("Got metadata for 100 collections in {:.2} seconds, {} indexed so far", t0.elapsed().as_secs_f64(), i);
-        t0 = Instant::now();        
+        t0 = Instant::now();
       }
     }
 
@@ -2574,7 +2630,7 @@ impl Vermilion {
       tx.commit().await?;
       log::info!("Inserted tokens for {} in db. {} of {} updated", symbol, i+1, new_symbols.len());
     }
-    Self::update_collection_summary(pool.clone()).await?;    
+    Self::update_collection_summary(pool.clone()).await?;
     Self::insert_recently_stored_collections(pool, collections_to_update).await?;
     Ok(true)
   }
@@ -2585,12 +2641,12 @@ impl Vermilion {
     let re = regex::Regex::new(pattern).unwrap();
     re.is_match(input)
   }
-  
+
   fn is_recursive(input: &str) -> bool {
     input.contains("/content")
   }
 
-  fn is_maybe_json(input: &str, content_type: Option<String>) -> bool { 
+  fn is_maybe_json(input: &str, content_type: Option<String>) -> bool {
     let length = input.len();
     if length < 2 {
       return false; // The string is too short
@@ -2606,7 +2662,7 @@ impl Vermilion {
     let num_commas = input.chars().filter(|&c| c == ',').count();
     let ratio = (num_colons as f32 + num_quotes as f32 + num_commas as f32)/ length as f32;
     let first_char = input.chars().next().unwrap();
-    let last_char = input.chars().last().unwrap();  
+    let last_char = input.chars().last().unwrap();
     first_char == '{' || last_char == '}' || ratio > 0.1
   }
 
@@ -2663,21 +2719,21 @@ impl Vermilion {
       Instruction::PushBytes(push_bytes) if push_bytes.len() == 32 => push_bytes,
       _ => return None,
     };
-    
+
     // Get second instruction and validate it's OP_CHECKSIG
     if instructions.next()?.ok()? != Instruction::Op(opcodes::all::OP_CHECKSIG) {
       return None;
     }
-    
+
     // Create the address
     let x_only_pubkey = bitcoin::secp256k1::XOnlyPublicKey::from_slice(push_bytes.as_bytes()).ok()?;
     let tweaked_taproot = bitcoin::Address::p2tr(
-      secp256k1, 
-      x_only_pubkey, 
-      None, 
+      secp256k1,
+      x_only_pubkey,
+      None,
       network
     );
-    
+
     Some(tweaked_taproot.to_string())
   }
 
@@ -2721,7 +2777,7 @@ impl Vermilion {
         let mut satributes = sat.block_rarities().iter().map(|x| x.to_string()).collect::<Vec<String>>();
         let sat_rarity = sat.rarity();
         if sat_rarity != Rarity::Common {
-          satributes.push(sat_rarity.to_string()); 
+          satributes.push(sat_rarity.to_string());
         }
         satributes
       },
@@ -2736,7 +2792,7 @@ impl Vermilion {
         .to_string();
       parents.push(parent_entry);
     }
-    
+
     // Calculate on_chain_collection_id as SHA256 hash of sorted parents
     let on_chain_collection_id = if !parents.is_empty() {
       let mut sorted_parents = parents.clone();
@@ -2825,7 +2881,7 @@ impl Vermilion {
       Some(content_type) => {
         let content_type = content_type.to_string();
         let mut content_category = match content_type.as_str() {
-          "text/plain;charset=utf-8" => "text", 
+          "text/plain;charset=utf-8" => "text",
           "text/plain" => "text",
           "text/markdown" => "text",
           "text/javascript" => "javascript",
@@ -2835,18 +2891,18 @@ impl Vermilion {
           "image/png" => "image",
           "image/svg+xml" => "image",
           "image/webp" => "image",
-          "image/avif" => "image", 
-          "image/tiff" => "image", 
-          "image/heic" => "image", 
+          "image/avif" => "image",
+          "image/tiff" => "image",
+          "image/heic" => "image",
           "image/jp2" => "image",
           "image/gif" => "gif",
-          "audio/mpeg" => "audio", 
-          "audio/ogg" => "audio", 
-          "audio/wav" => "audio", 
-          "audio/webm" => "audio", 
-          "audio/flac" => "audio", 
-          "audio/mod" => "audio", 
-          "audio/midi" => "audio", 
+          "audio/mpeg" => "audio",
+          "audio/ogg" => "audio",
+          "audio/wav" => "audio",
+          "audio/webm" => "audio",
+          "audio/flac" => "audio",
+          "audio/mod" => "audio",
+          "audio/midi" => "audio",
           "audio/x-m4a" => "audio",
           "video/mp4" => "video",
           "video/ogg" => "video",
@@ -2859,7 +2915,7 @@ impl Vermilion {
           "application/json" => "json",
           "application/json;charset=utf-8" => "json",
           "application/pdf" => "pdf",
-          "application/javascript" => "javascript",          
+          "application/javascript" => "javascript",
           _ => "unknown"
         };
         if is_json {
@@ -2973,7 +3029,7 @@ impl Vermilion {
     Self::create_on_chain_collection_summary_table(pool.clone()).await.context("Failed to create on chain collection summary table")?;
     Self::create_gallery_table(pool.clone()).await.context("Failed to create gallery table")?;
     Self::create_gallery_summary_table(pool.clone()).await.context("Failed to create gallery summary table")?;
-    
+
     Self::create_procedure_log(pool.clone()).await.context("Failed to create proc log")?;
     Self::create_trigger_timing_log(pool.clone()).await.context("Failed to create trigger timing log")?;
     Self::create_collection_summary_procedure(pool.clone()).await.context("Failed to create collection summary proc")?;
@@ -3037,7 +3093,7 @@ impl Vermilion {
         genesis_height bigint,
         genesis_transaction varchar(80),
         pointer bigint,
-        number bigint,          
+        number bigint,
         parents varchar(80)[],
         on_chain_collection_id varchar(64),
         delegate varchar(80),
@@ -3095,10 +3151,10 @@ impl Vermilion {
       CREATE INDEX IF NOT EXISTS index_metadata_category_charm on ordinals USING GIN(content_category, charms);
       CREATE INDEX IF NOT EXISTS index_metadata_json on ordinals(is_json, is_maybe_json, is_bitmap_style);
     ").await?;
-  
+
     Ok(())
   }
-  
+
   pub(crate) async fn create_full_metadata_table(pool: deadpool_postgres::Pool) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3113,7 +3169,7 @@ impl Vermilion {
         genesis_height bigint,
         genesis_transaction varchar(80),
         pointer bigint,
-        number bigint,          
+        number bigint,
         parents varchar(80)[],
         on_chain_collection_id varchar(64),
         delegate varchar(80),
@@ -3175,10 +3231,10 @@ impl Vermilion {
       CREATE INDEX IF NOT EXISTS index_metadata_full_category_charm on ordinals_full_t USING GIN(content_category, charms);
       CREATE INDEX IF NOT EXISTS index_metadata_full_json on ordinals_full_t(is_json, is_maybe_json, is_bitmap_style);
     ").await?;
-  
+
     Ok(())
   }
-  
+
   pub(crate) async fn create_sat_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(r"
@@ -3203,7 +3259,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_content_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3219,7 +3275,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_edition_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3236,7 +3292,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_editions_total_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3266,7 +3322,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_delegates_total_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3276,7 +3332,7 @@ impl Vermilion {
       )").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_inscription_comments_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3293,7 +3349,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_inscription_comments_total_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3321,7 +3377,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_references_total_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3352,7 +3408,7 @@ impl Vermilion {
       ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_inscription_satributes_total_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3362,7 +3418,7 @@ impl Vermilion {
       )").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn create_satributes_table(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -3409,7 +3465,7 @@ impl Vermilion {
         supply bigint,
         range_start bigint,
         range_end bigint,
-        total_volume bigint, 
+        total_volume bigint,
         transfer_fees bigint,
         transfer_footprint bigint,
         total_fees bigint,
@@ -3516,34 +3572,34 @@ impl Vermilion {
 
   async fn bulk_insert_metadata(tx: &deadpool_postgres::Transaction<'_>, data: Vec<Metadata>) -> anyhow::Result<(Duration, Duration)> {
     let copy_stm = r#"COPY ordinals (
-      sequence_number, 
-      id, 
-      content_length, 
-      content_type, 
+      sequence_number,
+      id,
+      content_length,
+      content_type,
       content_encoding,
       content_category,
-      genesis_fee, 
-      genesis_height, 
-      genesis_transaction, 
-      pointer, 
-      number, 
-      parents, 
+      genesis_fee,
+      genesis_height,
+      genesis_transaction,
+      pointer,
+      number,
+      parents,
       on_chain_collection_id,
       delegate,
       delegate_content_type,
-      metaprotocol, 
-      on_chain_metadata, 
+      metaprotocol,
+      on_chain_metadata,
       sat,
       sat_block,
       satributes,
-      charms, 
-      timestamp, 
-      sha256, 
+      charms,
+      timestamp,
+      sha256,
       text,
       referenced_ids,
-      is_json, 
-      is_maybe_json, 
-      is_bitmap_style, 
+      is_json,
+      is_maybe_json,
+      is_bitmap_style,
       is_recursive,
       spaced_rune,
       raw_properties,
@@ -3628,7 +3684,7 @@ impl Vermilion {
       row.push(&m.inscribed_by_address);
       writer.as_mut().write(&row).await?;
     }
-    let insert_finish = Instant::now();  
+    let insert_finish = Instant::now();
     let _x = writer.finish().await?;
     let trigger_finish = Instant::now();
     Ok((insert_finish.duration_since(insert_start), trigger_finish.duration_since(insert_finish)))
@@ -3684,7 +3740,7 @@ impl Vermilion {
       row.push(&m.percentile);
       row.push(&m.timestamp);
       writer.as_mut().write(&row).await?;
-    }  
+    }
     writer.finish().await?;
     tx.simple_query("INSERT INTO sat SELECT * FROM inserts_sat ON CONFLICT DO NOTHING").await?;
     Ok(())
@@ -3694,8 +3750,8 @@ impl Vermilion {
     tx.simple_query("CREATE TEMP TABLE inserts_content ON COMMIT DROP AS TABLE content WITH NO DATA").await?;
     let copy_stm = r#"COPY inserts_content (
       content_id,
-      sha256, 
-      content, 
+      sha256,
+      content,
       content_type,
       content_encoding
     ) FROM STDIN BINARY"#;
@@ -3727,11 +3783,11 @@ impl Vermilion {
 
   pub(crate) async fn bulk_insert_editions(tx: &deadpool_postgres::Transaction<'_>, metadata_vec: Vec<Metadata>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tx.simple_query("CREATE TEMP TABLE inserts_editions ON COMMIT DROP AS TABLE editions WITH NO DATA").await?;
-    let copy_stm = r#"COPY inserts_editions (      
+    let copy_stm = r#"COPY inserts_editions (
       id,
       number,
       sequence_number,
-      sha256, 
+      sha256,
       edition) FROM STDIN BINARY"#;
     let col_types = vec![
       Type::VARCHAR,
@@ -3775,7 +3831,7 @@ impl Vermilion {
       row.push(&m.sat);
       row.push(&m.satribute);
       writer.as_mut().write(&row).await?;
-    }  
+    }
     writer.finish().await?;
     tx.simple_query("INSERT INTO satributes SELECT * FROM inserts_satributes ON CONFLICT DO NOTHING").await?;
     Ok(())
@@ -3797,7 +3853,7 @@ impl Vermilion {
       row.push(&m.gallery_id);
       row.push(&m.inscription_id);
       writer.as_mut().write(&row).await?;
-    }  
+    }
     writer.finish().await?;
     Ok(())
   }
@@ -3830,7 +3886,7 @@ impl Vermilion {
     ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn bulk_insert_transfers(tx: &deadpool_postgres::Transaction<'_>, transfer_vec: Vec<Transfer>) -> Result<(Duration, Duration), Box<dyn std::error::Error + Send + Sync>> {
     let copy_stm = r#"COPY transfers (
       id,
@@ -3919,7 +3975,7 @@ impl Vermilion {
     ").await?;
     Ok(())
   }
-  
+
   pub(crate) async fn bulk_insert_addresses(tx: &deadpool_postgres::Transaction<'_>, mut transfer_vec: Vec<Transfer>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     //ON CONFLICT DO UPDATE command cannot affect row a second time, so we reverse & dedup (effectively keeping the last transfer in block)
     transfer_vec.reverse();
@@ -3981,8 +4037,8 @@ impl Vermilion {
       writer.as_mut().write(&row).await?;
     }
     writer.finish().await?;
-    tx.simple_query("INSERT INTO addresses SELECT * FROM inserts_addresses ON CONFLICT (id) DO UPDATE SET 
-      block_number = EXCLUDED.block_number, 
+    tx.simple_query("INSERT INTO addresses SELECT * FROM inserts_addresses ON CONFLICT (id) DO UPDATE SET
+      block_number = EXCLUDED.block_number,
       block_timestamp = EXCLUDED.block_timestamp,
       satpoint = EXCLUDED.satpoint,
       tx_offset = EXCLUDED.tx_offset,
@@ -4053,11 +4109,11 @@ impl Vermilion {
 
   pub(crate) async fn bulk_insert_inscription_blockstats(tx: &deadpool_postgres::Transaction<'_>, block_number: i64) -> Result<(), Box<dyn std::error::Error>> {
     tx.query(
-      r"INSERT INTO inscription_blockstats (block_number, block_inscription_count, block_inscription_size, block_inscription_fees) 
+      r"INSERT INTO inscription_blockstats (block_number, block_inscription_count, block_inscription_size, block_inscription_fees)
       SELECT $1 as block_number, count(*) as block_inscription_count, coalesce(sum(tx_size),0) as block_inscription_size, coalesce(sum(tx_fee),0) as block_inscription_fees from transfers where block_number = $1 and is_genesis"
     , &[&block_number]).await?;
     tx.query(
-      r"INSERT INTO inscription_blockstats (block_number, block_transfer_count, block_transfer_size, block_transfer_fees, block_volume) 
+      r"INSERT INTO inscription_blockstats (block_number, block_transfer_count, block_transfer_size, block_transfer_fees, block_volume)
       SELECT $1 as block_number, count(*) as block_transfer_count, coalesce(sum(tx_size),0) as block_transfer_size, coalesce(sum(tx_fee),0) as block_transfer_fees, coalesce(sum(price),0) as block_volume from transfers where block_number = $1 and NOT is_genesis
       ON CONFLICT (block_number) DO UPDATE SET
       block_transfer_count = EXCLUDED.block_transfer_count,
@@ -4100,7 +4156,7 @@ impl Vermilion {
       )").await?;
     Ok(())
   }
-  
+
   //Server api functions
   async fn root() -> &'static str {
 "If Bitcoin is to change the culture of money, it needs to be cool. Ordinals was the missing piece. The path to $1m is preordained"
@@ -4432,8 +4488,8 @@ impl Vermilion {
   }
 
   async fn random_inscriptions(
-    n: Query<QueryNumber>, 
-    State(server_config): State<ApiServerConfig>, 
+    n: Query<QueryNumber>,
+    State(server_config): State<ApiServerConfig>,
     NoApi(session): NoApi<Session<SessionNullPool>>
   ) -> Result<Json<Vec<FullMetadata>>, ApiError> {
     let bands: Vec<(f64, f64)> = session.get("bands_seen").unwrap_or(Vec::new());
@@ -4908,19 +4964,19 @@ impl Vermilion {
       row.push(&m.max_inscription_number);
       row.push(&m.date_created);
       writer.as_mut().write(&row).await?;
-    }  
+    }
     writer.finish().await?;
-    tx.simple_query("INSERT INTO collection_list SELECT * FROM inserts_collection_list ON CONFLICT (collection_symbol) DO UPDATE SET 
-      name=EXCLUDED.name, 
-      image_uri=EXCLUDED.image_uri, 
-      inscription_icon=EXCLUDED.inscription_icon, 
+    tx.simple_query("INSERT INTO collection_list SELECT * FROM inserts_collection_list ON CONFLICT (collection_symbol) DO UPDATE SET
+      name=EXCLUDED.name,
+      image_uri=EXCLUDED.image_uri,
+      inscription_icon=EXCLUDED.inscription_icon,
       description=EXCLUDED.description,
-      supply=EXCLUDED.supply, 
-      twitter=EXCLUDED.twitter, 
-      discord=EXCLUDED.discord, 
-      website=EXCLUDED.website, 
+      supply=EXCLUDED.supply,
+      twitter=EXCLUDED.twitter,
+      discord=EXCLUDED.discord,
+      website=EXCLUDED.website,
       min_inscription_number=EXCLUDED.min_inscription_number,
-      max_inscription_number=EXCLUDED.max_inscription_number, 
+      max_inscription_number=EXCLUDED.max_inscription_number,
       date_created=EXCLUDED.date_created").await?;
     Ok(())
   }
@@ -5167,7 +5223,7 @@ impl Vermilion {
   async fn get_block_icon(pool: deadpool, block: i64) -> anyhow::Result<ContentBlob> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "select id from ordinals where genesis_height=$1 and (content_type LIKE 'image%' or content_type LIKE 'text/html%') order by content_length desc nulls last limit 1", 
+      "select id from ordinals where genesis_height=$1 and (content_type LIKE 'image%' or content_type LIKE 'text/html%') order by content_length desc nulls last limit 1",
       &[&block]
     ).await?;
     let id = result.get(0);
@@ -5178,7 +5234,7 @@ impl Vermilion {
   async fn get_sat_block_icon(pool: deadpool, block: i64) -> anyhow::Result<ContentBlob> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "select id from ordinals where sat in (select sat from sat where block=$1) and (content_type LIKE 'image%' or content_type LIKE 'text/html%') order by content_length desc nulls last limit 1", 
+      "select id from ordinals where sat in (select sat from sat where block=$1) and (content_type LIKE 'image%' or content_type LIKE 'text/html%') order by content_length desc nulls last limit 1",
       &[&block]
     ).await?;
     let id = result.get(0);
@@ -5219,7 +5275,7 @@ impl Vermilion {
     FullMetadata {
       id: row.get("id"),
       content_length: row.get("content_length"),
-      content_type: row.get("content_type"), 
+      content_type: row.get("content_type"),
       content_encoding: row.get("content_encoding"),
       content_category: row.get("content_category"),
       genesis_fee: row.get("genesis_fee"),
@@ -5249,7 +5305,7 @@ impl Vermilion {
       spaced_rune: row.get("spaced_rune"),
       inscribed_by_address: row.get("inscribed_by_address"),
       collection_symbol: row.get("collection_symbol"),
-      off_chain_metadata: row.get("off_chain_metadata"),      
+      off_chain_metadata: row.get("off_chain_metadata"),
       collection_name: row.get("collection_name"),
     }
   }
@@ -5257,7 +5313,7 @@ impl Vermilion {
   async fn get_ordinal_metadata(pool: deadpool, inscription_id: String) -> anyhow::Result<FullMetadata> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "SELECT * FROM ordinals_full_v where id=$1 LIMIT 1", 
+      "SELECT * FROM ordinals_full_v where id=$1 LIMIT 1",
       &[&inscription_id]
     ).await?;
     Ok(Self::map_row_to_fullmetadata(result))
@@ -5266,7 +5322,7 @@ impl Vermilion {
   async fn get_ordinal_metadata_by_number(pool: deadpool, number: i64) -> anyhow::Result<FullMetadata> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "SELECT * FROM ordinals_full_v where number=$1 LIMIT 1", 
+      "SELECT * FROM ordinals_full_v where number=$1 LIMIT 1",
       &[&number]
     ).await?;
     Ok(Self::map_row_to_fullmetadata(result))
@@ -5334,7 +5390,7 @@ impl Vermilion {
     let base_query = "SELECT * FROM ordinals_full_v o WHERE parents && ARRAY[$1::varchar]".to_string();
     let full_query = Self::create_inscription_query_string(base_query, params);
     let result = conn.query(
-      full_query.as_str(), 
+      full_query.as_str(),
       &[&inscription_id]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -5348,7 +5404,7 @@ impl Vermilion {
     let conn = pool.get().await?;
     let query = "Select id from ordinals where number=$1";
     let result = conn.query_one(
-      query, 
+      query,
       &[&number]
     ).await?;
     let id: String = result.get(0);
@@ -5361,7 +5417,7 @@ impl Vermilion {
     let base_query = "SELECT * FROM ordinals_full_v o WHERE referenced_ids && ARRAY[$1::varchar]".to_string();
     let full_query = Self::create_inscription_query_string(base_query, params);
     let result = conn.query(
-      full_query.as_str(), 
+      full_query.as_str(),
       &[&inscription_id]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -5375,7 +5431,7 @@ impl Vermilion {
     let conn = pool.get().await?;
     let query = "Select id from ordinals where number=$1";
     let result = conn.query_one(
-      query, 
+      query,
       &[&number]
     ).await?;
     let id: String = result.get(0);
@@ -5406,7 +5462,7 @@ impl Vermilion {
       query.push_str(format!(" OFFSET {}", offset).as_str());
     }
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&inscription_id]
     ).await?;
     let mut bootlegs = Vec::new();
@@ -5449,7 +5505,7 @@ impl Vermilion {
       query.push_str(format!(" OFFSET {}", offset).as_str());
     }
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&number]
     ).await?;
     let mut bootlegs = Vec::new();
@@ -5483,7 +5539,7 @@ impl Vermilion {
     left join addresses a on d.bootleg_id=a.id
     WHERE d.bootleg_id=$1"#;
     let result = conn.query_one(
-      query, 
+      query,
       &[&inscription_id]
     ).await?;
     let edition = BootlegEdition {
@@ -5514,7 +5570,7 @@ impl Vermilion {
     left join addresses a on d.bootleg_id=a.id
     WHERE d.bootleg_id=(SELECT id FROM ordinals WHERE number=$1 LIMIT 1)"#;
     let result = conn.query_one(
-      query, 
+      query,
       &[&number]
     ).await?;
     let edition = BootlegEdition {
@@ -5554,7 +5610,7 @@ impl Vermilion {
       query.push_str(format!(" OFFSET {}", offset).as_str());
     }
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&inscription_id]
     ).await?;
     let mut comments = Vec::new();
@@ -5597,7 +5653,7 @@ impl Vermilion {
       query.push_str(format!(" OFFSET {}", offset).as_str());
     }
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&number]
     ).await?;
     let mut comments = Vec::new();
@@ -5665,7 +5721,7 @@ impl Vermilion {
     let full_query = Self::create_inscription_query_string(base_query, params);
     println!("{}", full_query);
     let result = conn.query(
-      full_query.as_str(), 
+      full_query.as_str(),
       &[&block]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -5674,7 +5730,7 @@ impl Vermilion {
     }
     Ok(inscriptions)
   }
-  
+
   async fn get_random_inscription(pool: deadpool, random_float: f64) -> anyhow::Result<(FullMetadata, (f64, f64))> {
     let conn = pool.get().await?;
     let random_inscription_band = conn.query_one(
@@ -5687,7 +5743,7 @@ impl Vermilion {
       end: random_inscription_band.get("class_band_end")
     };
     let metadata = conn.query_one(
-      "SELECT * from ordinals_full_v where sequence_number=$1 limit 1", 
+      "SELECT * from ordinals_full_v where sequence_number=$1 limit 1",
       &[&random_inscription_band.sequence_number]
     ).await?;
     let metadata = Self::map_row_to_fullmetadata(metadata);
@@ -5728,7 +5784,7 @@ impl Vermilion {
   async fn get_recent_inscriptions(pool: deadpool, n: i64) -> anyhow::Result<Vec<FullMetadata>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT * FROM ordinals_full_v order by sequence_number desc limit $1", 
+      "SELECT * FROM ordinals_full_v order by sequence_number desc limit $1",
       &[&n]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -5741,7 +5797,7 @@ impl Vermilion {
   async fn get_recent_boosts(pool: deadpool, n: i64) -> anyhow::Result<Vec<BoostFullMetadata>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT o.*, a.address, d.bootleg_edition from delegates d left join addresses a on d.bootleg_id=a.id left join ordinals_full_v o on o.id=d.bootleg_id order by d.bootleg_sequence_number desc limit $1", 
+      "SELECT o.*, a.address, d.bootleg_edition from delegates d left join addresses a on d.bootleg_id=a.id left join ordinals_full_v o on o.id=d.bootleg_id order by d.bootleg_sequence_number desc limit $1",
       &[&n]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -5749,7 +5805,7 @@ impl Vermilion {
       let inscription = BoostFullMetadata {
         id: row.get("id"),
         content_length: row.get("content_length"),
-        content_type: row.get("content_type"), 
+        content_type: row.get("content_type"),
         content_encoding: row.get("content_encoding"),
         content_category: row.get("content_category"),
         genesis_fee: row.get("genesis_fee"),
@@ -5792,7 +5848,7 @@ impl Vermilion {
   async fn get_boost_leaderboard(pool: deadpool) -> anyhow::Result<Vec<LeaderboardEntry>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT a.address, count(*) from delegates d left join addresses a on d.bootleg_id=a.id where d.bootleg_block_height>(select max(genesis_height)-2016 from ordinals) group by a.address order by count(*) desc limit 100", 
+      "SELECT a.address, count(*) from delegates d left join addresses a on d.bootleg_id=a.id where d.bootleg_block_height>(select max(genesis_height)-2016 from ordinals) group by a.address order by count(*) desc limit 100",
       &[]
     ).await?;
     let mut leaderboard = Vec::new();
@@ -5812,7 +5868,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   let mut rng = rand::rngs::StdRng::from_entropy();
   let mut random_floats = Vec::new();
   let t0 = std::time::Instant::now();
-  
+
   for i in 0..n {
     // Get available bands by filtering out already seen bands
     let mut available_bands: Vec<(f64, f64, i64)> = all_bands
@@ -5832,7 +5888,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     let total_length: f64 = available_bands.iter().map(|r| r.1 - r.0).sum();
     let mut target = rng.gen::<f64>() * total_length;
     let mut selected_float = 0.0;
-    
+
     for range in &available_bands {
       let range_length = range.1 - range.0;
       if target <= range_length {
@@ -5843,7 +5899,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     }
 
     random_floats.push(selected_float);
-    
+
     for band in all_bands.iter() {
       if selected_float >= band.0 && selected_float < band.1 {
         log::info!("Selected random float {} in band ({}, {})", selected_float, band.0, band.1);
@@ -5852,7 +5908,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
       }
     }
   }
-  
+
   let t1 = std::time::Instant::now();
   log::info!("Generated {} random floats in {}ms", random_floats.len(), (t1 - t0).as_millis());
 
@@ -5868,7 +5924,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   log::info!("Fetched {} trending items in {}ms", trending_items.len(), (std::time::Instant::now() - t1).as_millis());
   Ok(trending_items)
 }
-  
+
   async fn get_trending_feed_item(pool: deadpool, random_float: f64) -> anyhow::Result<TrendingItem> {
     let conn = pool.get().await?;
     let random_inscription_band = conn.query_one(
@@ -5887,7 +5943,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
       band_id: random_inscription_band.get("band_id"),
     };
     let result = conn.query(
-      "SELECT * from ordinals_full_v where id=ANY($1)", 
+      "SELECT * from ordinals_full_v where id=ANY($1)",
       &[&trending_item_activity.ids]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -5903,7 +5959,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_trending_bands(pool: deadpool) -> anyhow::Result<Vec<(f64, f64, i64)>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT band_start, band_end, band_id from trending_summary", 
+      "SELECT band_start, band_end, band_id from trending_summary",
       &[]
     ).await?;
     let mut bands = Vec::new();
@@ -5965,7 +6021,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
       class_band_end: random_inscription_band.get("class_band_end")
     };
     let result = conn.query(
-      "SELECT * from ordinals_full_v where id=ANY($1)", 
+      "SELECT * from ordinals_full_v where id=ANY($1)",
       &[&discover_item_activity.ids]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -6081,7 +6137,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     }
     println!("Query: {}", query);
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -6105,7 +6161,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_last_ordinal_transfer(pool: deadpool, inscription_id: String) -> anyhow::Result<Transfer> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "SELECT * FROM addresses WHERE id=$1 LIMIT 1", 
+      "SELECT * FROM addresses WHERE id=$1 LIMIT 1",
       &[&inscription_id]
     ).await?;
     let transfer = Transfer {
@@ -6131,7 +6187,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_last_ordinal_transfer_by_number(pool: deadpool, number: i64) -> anyhow::Result<Transfer> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "with a as (Select id from ordinals where number=$1) select b.* from addresses b, a where a.id=b.id limit 1", 
+      "with a as (Select id from ordinals where number=$1) select b.* from addresses b, a where a.id=b.id limit 1",
       &[&number]
     ).await?;
     let transfer = Transfer {
@@ -6157,7 +6213,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_ordinal_transfers(pool: deadpool, inscription_id: String) -> anyhow::Result<Vec<Transfer>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT * FROM transfers WHERE id=$1 ORDER BY block_number ASC", 
+      "SELECT * FROM transfers WHERE id=$1 ORDER BY block_number ASC",
       &[&inscription_id]
     ).await?;
     let mut transfers = Vec::new();
@@ -6186,7 +6242,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_ordinal_transfers_by_number(pool: deadpool, number: i64) -> anyhow::Result<Vec<Transfer>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "with a as (Select id from ordinals where number=$1) select b.* from transfers b, a where a.id=b.id order by block_number desc", 
+      "with a as (Select id from ordinals where number=$1) select b.* from transfers b, a where a.id=b.id order by block_number desc",
       &[&number]
     ).await?;
     let mut transfers = Vec::new();
@@ -6217,7 +6273,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     let base_query = " SELECT o.* FROM addresses a LEFT JOIN ordinals_full_v o ON a.id=o.id WHERE a.address=$1".to_string();
     let full_query = Self::create_inscription_query_string(base_query, params);
     let result = conn.query(
-      full_query.as_str(), 
+      full_query.as_str(),
       &[&address]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -6230,7 +6286,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_inscriptions_on_sat(pool: deadpool, sat: i64) -> anyhow::Result<Vec<FullMetadata>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT * FROM ordinals_full_v WHERE sat=$1", 
+      "SELECT * FROM ordinals_full_v WHERE sat=$1",
       &[&sat]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -6245,7 +6301,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     let base_query = "select o.* from ordinals_full_v o where o.sat_block=$1".to_string();
     let full_query = Self::create_inscription_query_string(base_query, params);
     let result = conn.query(
-      full_query.as_str(), 
+      full_query.as_str(),
       &[&block]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -6258,7 +6314,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_sat_metadata(pool: deadpool, sat: i64) -> anyhow::Result<SatMetadata> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      "SELECT * FROM sat WHERE sat=$1 limit 1", 
+      "SELECT * FROM sat WHERE sat=$1 limit 1",
       &[&sat]
     ).await;
     let sat_metadata = match result {
@@ -6277,14 +6333,14 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
           rarity: result.get("rarity"),
           percentile: result.get("percentile"),
           timestamp: result.get("timestamp")
-        }      
+        }
       },
       Err(_) => {
         let parsed_sat = Sat(sat as u64);
         let mut satributes = parsed_sat.block_rarities().iter().map(|x| x.to_string()).collect::<Vec<String>>();
         let sat_rarity = parsed_sat.rarity();
         if sat_rarity != Rarity::Common {
-          satributes.push(sat_rarity.to_string()); 
+          satributes.push(sat_rarity.to_string());
         }
         let mut metadata = SatMetadata {
           sat: sat.try_into().unwrap(),
@@ -6302,7 +6358,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
           timestamp: 0
         };
         let blockstats_result = conn.query_one(
-          "Select * from blockstats where block_number=$1 limit 1", 
+          "Select * from blockstats where block_number=$1 limit 1",
           &[&metadata.block]
         ).await?;
         metadata.timestamp = blockstats_result.get("block_timestamp");
@@ -6316,7 +6372,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_satributes(pool: deadpool, sat: i64) -> anyhow::Result<Vec<Satribute>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "SELECT * FROM satributes WHERE sat=$1", 
+      "SELECT * FROM satributes WHERE sat=$1",
       &[&sat]
     ).await?;
     let mut satributes = Vec::new();
@@ -6387,7 +6443,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     }
     println!("Query: {}", query);
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[]
     ).await?;
     let mut collections = Vec::new();
@@ -6420,7 +6476,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_collection_summary(pool: deadpool, collection_symbol: String) -> anyhow::Result<CollectionSummary> {
     let conn = pool.get().await?;
     let query = r"
-      SELECT 
+      SELECT
         l.collection_symbol, l.name, l.description, l.twitter, l.discord, l.website,
         s.total_inscription_fees,
         s.total_inscription_size,
@@ -6436,7 +6492,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         s.total_on_chain_footprint
       from collection_list l left join collection_summary s on l.collection_symbol=s.collection_symbol WHERE s.collection_symbol=$1 LIMIT 1";
     let result = conn.query_one(
-      query, 
+      query,
       &[&collection_symbol]
     ).await?;
     let collection = CollectionSummary {
@@ -6467,26 +6523,26 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     let page_size = params.page_size.unwrap_or(10);
     let offset = params.page_number.unwrap_or(0) * page_size;
     let mut query = r"
-      select 
-        collection_symbol, 
-        COUNT(address) OVER () AS collection_holder_count, 
-        address, 
+      select
+        collection_symbol,
+        COUNT(address) OVER () AS collection_holder_count,
+        address,
         count(*) as address_count
-      from collections c 
-      left join addresses a 
-      on c.id = a.id 
-      where c.collection_symbol = $1 
-      group by a.address, c.collection_symbol 
+      from collections c
+      left join addresses a
+      on c.id = a.id
+      where c.collection_symbol = $1
+      group by a.address, c.collection_symbol
       order by count(*) desc".to_string();
     if page_size > 0 {
-      query.push_str(format!(" LIMIT {}", page_size).as_str());        
+      query.push_str(format!(" LIMIT {}", page_size).as_str());
     }
     if offset > 0 {
       query.push_str(format!(" OFFSET {}", offset).as_str());
     }
-    
+
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&collection_symbol]
     ).await?;
     let mut holders = Vec::new();
@@ -6555,7 +6611,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     }
     println!("Query: {}", query);
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&collection_symbol]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -6569,7 +6625,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_inscription_collection_data(pool: deadpool, inscription_id: String) -> anyhow::Result<Vec<InscriptionCollectionData>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "select c.id, c.number, c.off_chain_metadata, l.* from collections c left join collection_list l on c.collection_symbol=l.collection_symbol where c.id=$1", 
+      "select c.id, c.number, c.off_chain_metadata, l.* from collections c left join collection_list l on c.collection_symbol=l.collection_symbol where c.id=$1",
       &[&inscription_id]
     ).await?;
     let mut collection_data = Vec::new();
@@ -6598,7 +6654,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_inscription_collection_data_number(pool: deadpool, number: i64) -> anyhow::Result<Vec<InscriptionCollectionData>> {
     let conn = pool.get().await?;
     let result = conn.query(
-      "select c.id, c.number, c.off_chain_metadata, l.* from collections c left join collection_list l on c.collection_symbol=l.collection_symbol where c.number=$1", 
+      "select c.id, c.number, c.off_chain_metadata, l.* from collections c left join collection_list l on c.collection_symbol=l.collection_symbol where c.number=$1",
       &[&number]
     ).await?;
     let mut collection_data = Vec::new();
@@ -6677,7 +6733,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     }
     println!("Query: {}", query);
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[]
     ).await?;
     let mut collections = Vec::new();
@@ -6706,7 +6762,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
   async fn get_on_chain_collection_summary(pool: deadpool, parents: Vec<String>) -> anyhow::Result<OnChainCollectionSummary> {
     let conn = pool.get().await?;
     let query = r"
-      SELECT 
+      SELECT
         s.parents,
         array(
           SELECT io.number
@@ -6727,7 +6783,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
         s.total_on_chain_footprint
       from on_chain_collection_summary s WHERE s.parents = $1";
     let result_vec = conn.query(
-      query, 
+      query,
       &[&parents]
     ).await?;
     let collection = match result_vec.first() {
@@ -6765,7 +6821,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
           total_on_chain_footprint: None
         }
       }
-    }; 
+    };
     Ok(collection)
   }
 
@@ -6774,31 +6830,31 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     let page_size = params.page_size.unwrap_or(10);
     let offset = params.page_number.unwrap_or(0) * page_size;
     let mut query = r"
-      select 
-        parents, 
+      select
+        parents,
         array(
           SELECT io.number
           FROM unnest(parents) p
           LEFT JOIN ordinals io ON p = io.id
         ) AS parent_numbers,
-        COUNT(address) OVER () AS collection_holder_count, 
-        address, 
+        COUNT(address) OVER () AS collection_holder_count,
+        address,
         count(*) as address_count
-      from ordinals o 
-      left join addresses a 
-      on o.id = a.id 
+      from ordinals o
+      left join addresses a
+      on o.id = a.id
       where o.parents = $1
       group by a.address, o.parents
       order by count(*) desc".to_string();
     if page_size > 0 {
-      query.push_str(format!(" LIMIT {}", page_size).as_str());        
+      query.push_str(format!(" LIMIT {}", page_size).as_str());
     }
     if offset > 0 {
       query.push_str(format!(" OFFSET {}", offset).as_str());
     }
-    
+
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&parents]
     ).await?;
     let mut holders = Vec::new();
@@ -6868,7 +6924,7 @@ async fn get_trending_feed_items(pool: deadpool, n: u32, mut already_seen_bands:
     }
     println!("Query: {}", query);
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[&parents]
     ).await?;
     let mut inscriptions = Vec::new();
@@ -7093,16 +7149,16 @@ let full_query = Self::create_inscription_query_string(base_query, params);
   async fn get_block_statistics(pool: deadpool, block: i64) -> anyhow::Result<CombinedBlockStats> {
     let conn = pool.get().await?;
     let result = conn.query_one(
-      r"select b.*, 
-        i.block_inscription_count, 
-        i.block_inscription_size, 
-        i.block_inscription_fees, 
-        i.block_transfer_count, 
-        i.block_transfer_size, 
-        i.block_transfer_fees, 
-        i.block_volume 
-        from blockstats b 
-        left join inscription_blockstats i on b.block_number=i.block_number 
+      r"select b.*,
+        i.block_inscription_count,
+        i.block_inscription_size,
+        i.block_inscription_fees,
+        i.block_transfer_count,
+        i.block_transfer_size,
+        i.block_transfer_fees,
+        i.block_volume
+        from blockstats b
+        left join inscription_blockstats i on b.block_number=i.block_number
         where b.block_number=$1",
       &[&block]
     ).await?;
@@ -7130,17 +7186,17 @@ let full_query = Self::create_inscription_query_string(base_query, params);
   async fn get_sat_block_statistics(pool: deadpool, block: i64) -> anyhow::Result<SatBlockStats> {
     let conn = pool.get().await?;
     let result = conn.query_one(r"
-      select 
-        s.*, 
-        b.block_timestamp as sat_block_timestamp 
+      select
+        s.*,
+        b.block_timestamp as sat_block_timestamp
       from (
-        SELECT 
+        SELECT
           CAST($1 as BIGINT) as sat_block_number,
-          CAST(count(*) AS BIGINT) as sat_block_inscription_count, 
-          CAST(sum(content_length) AS BIGINT) as sat_block_inscription_size, 
+          CAST(count(*) AS BIGINT) as sat_block_inscription_count,
+          CAST(sum(content_length) AS BIGINT) as sat_block_inscription_size,
           CAST(sum(genesis_fee) AS BIGINT) as sat_block_inscription_fees
         from ordinals where sat in (select sat from sat where block=$1)
-      ) s 
+      ) s
       left join blockstats b on s.sat_block_number = b.block_number",
       &[&block]
     ).await?;
@@ -7200,7 +7256,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
     }
     println!("Query: {}", query);
     let result = conn.query(
-      query.as_str(), 
+      query.as_str(),
       &[]
     ).await?;
     let mut blocks = Vec::new();
@@ -7227,12 +7283,12 @@ let full_query = Self::create_inscription_query_string(base_query, params);
     }
     Ok(blocks)
   }
-  
+
   async fn get_collection_search_result(pool: deadpool, search_query: String) -> anyhow::Result<Vec<CollectionSummary>> {
     let conn = pool.get().await?;
     let escaped_search_query = format!("%{}%", search_query);
     let query = format!(r"
-      select 
+      select
         l.collection_symbol, l.name, l.description, l.twitter, l.discord, l.website,
         s.total_inscription_fees,
         s.total_inscription_size,
@@ -7246,10 +7302,10 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         s.transfer_footprint,
         s.total_fees,
         s.total_on_chain_footprint
-      from collection_list l 
-      left join collection_summary s 
-      on l.collection_symbol=s.collection_symbol 
-      where l.name ILIKE $1 or l.description ILIKE $1 
+      from collection_list l
+      left join collection_summary s
+      on l.collection_symbol=s.collection_symbol
+      where l.name ILIKE $1 or l.description ILIKE $1
       order by s.total_volume desc nulls last
       limit 5");
     let result = conn.query(query.as_str(), &[&escaped_search_query]).await?;
@@ -7269,7 +7325,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         supply: row.get("supply"),
         range_start: row.get("range_start"),
         range_end: row.get("range_end"),
-        total_volume: row.get("total_volume"),        
+        total_volume: row.get("total_volume"),
         transfer_fees: row.get("transfer_fees"),
         transfer_footprint: row.get("transfer_footprint"),
         total_fees: row.get("total_fees"),
@@ -7288,7 +7344,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
     let search_query = search_query.trim();
     let mut search_result = SearchResult {
       collections: Vec::new(),
-      inscription: None,      
+      inscription: None,
       address: None,
       block: None,
       sat: None,
@@ -7343,7 +7399,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             step_start_time = log.step_start_time,
             step_end_time = EXCLUDED.step_end_time,
             step_time_us = log.step_time_us + EXCLUDED.step_time_us;
-        
+
         -- 1a. Update delegates
         IF NEW.delegate IS NOT NULL THEN
           -- Get the previous total for the same delegate id
@@ -7384,16 +7440,16 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         FOREACH ref_id IN ARRAY NEW.referenced_ids
         LOOP
           -- Get the previous total for the same reference id
-          SELECT total INTO previous_reference_total 
-          FROM inscription_references_total 
+          SELECT total INTO previous_reference_total
+          FROM inscription_references_total
           WHERE reference_id = ref_id;
           -- Insert or update the total in inscription_references_total
-          INSERT INTO inscription_references_total (reference_id, total) 
+          INSERT INTO inscription_references_total (reference_id, total)
           VALUES (ref_id, COALESCE(previous_reference_total, 0) + 1)
-          ON CONFLICT (reference_id) DO UPDATE 
+          ON CONFLICT (reference_id) DO UPDATE
           SET total = EXCLUDED.total;
-          -- Insert the new reference 
-          INSERT INTO inscription_references (reference_id, recursive_id, recursive_number, recursive_sequence_number, recursive_edition) 
+          -- Insert the new reference
+          INSERT INTO inscription_references (reference_id, recursive_id, recursive_number, recursive_sequence_number, recursive_edition)
           VALUES (ref_id, NEW.id, NEW.number, NEW.sequence_number, COALESCE(previous_reference_total, 0) + 1);
         END LOOP;
         t4 := clock_timestamp();
@@ -7425,11 +7481,11 @@ let full_query = Self::create_inscription_query_string(base_query, params);
 
         -- 4. Update on chain collection summary
         -- Add delta for a single inscription and all transfers (so far)
-        IF array_length(NEW.parents, 1) > 0 THEN          
+        IF array_length(NEW.parents, 1) > 0 THEN
           LOCK TABLE transfers IN EXCLUSIVE MODE;
           -- RAISE NOTICE 'insert_metadata (on chain summary): transfers lock acquired';
           WITH a AS (
-            SELECT 
+            SELECT
               SUM(price) AS total_volume,
               SUM(tx_fee) AS transfer_fees,
               SUM(tx_size) AS transfer_footprint
@@ -7452,7 +7508,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             transfer_footprint,
             total_fees,
             total_on_chain_footprint
-          ) 
+          )
           SELECT
             hash_array(ARRAY(SELECT unnest(NEW.parents) ORDER BY 1)) as parents_hash,
             NEW.parents,
@@ -7515,11 +7571,11 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           -- Remove the delegate entry
           DELETE FROM delegates WHERE bootleg_id = OLD.id;
           -- Decrement the total in delegates_total
-          UPDATE delegates_total 
-          SET total = total - 1 
+          UPDATE delegates_total
+          SET total = total - 1
           WHERE delegate_id = OLD.delegate;
           -- Remove the record if total reaches 0
-          DELETE FROM delegates_total 
+          DELETE FROM delegates_total
           WHERE delegate_id = OLD.delegate AND total <= 0;
         END IF;
 
@@ -7528,11 +7584,11 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           -- Remove the comment entry
           DELETE FROM inscription_comments WHERE comment_id = OLD.id;
           -- Decrement the total in inscription_comments_total
-          UPDATE inscription_comments_total 
-          SET total = total - 1 
+          UPDATE inscription_comments_total
+          SET total = total - 1
           WHERE delegate_id = OLD.delegate;
           -- Remove the record if total reaches 0
-          DELETE FROM inscription_comments_total 
+          DELETE FROM inscription_comments_total
           WHERE delegate_id = OLD.delegate AND total <= 0;
         END IF;
 
@@ -7540,14 +7596,14 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         FOREACH ref_id IN ARRAY OLD.referenced_ids
         LOOP
           -- Remove the reference entry
-          DELETE FROM inscription_references 
+          DELETE FROM inscription_references
           WHERE reference_id = ref_id AND recursive_id = OLD.id;
           -- Decrement the total in inscription_references_total
-          UPDATE inscription_references_total 
-          SET total = total - 1 
+          UPDATE inscription_references_total
+          SET total = total - 1
           WHERE reference_id = ref_id;
           -- Remove the record if total reaches 0
-          DELETE FROM inscription_references_total 
+          DELETE FROM inscription_references_total
           WHERE reference_id = ref_id AND total <= 0;
         END LOOP;
 
@@ -7555,23 +7611,23 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         FOREACH inscription_satribute IN ARRAY OLD.satributes
         LOOP
           -- Remove the satribute entry
-          DELETE FROM inscription_satributes 
+          DELETE FROM inscription_satributes
           WHERE satribute = inscription_satribute AND inscription_id = OLD.id;
           -- Decrement the total in inscription_satributes_total
-          UPDATE inscription_satributes_total 
-          SET total = total - 1 
+          UPDATE inscription_satributes_total
+          SET total = total - 1
           WHERE satribute = inscription_satribute;
           -- Remove the record if total reaches 0
-          DELETE FROM inscription_satributes_total 
+          DELETE FROM inscription_satributes_total
           WHERE satribute = inscription_satribute AND total <= 0;
         END LOOP;
 
         -- 4. Update on chain collection summary (subtract inscription and related transfers)
-        IF array_length(OLD.parents, 1) > 0 THEN          
+        IF array_length(OLD.parents, 1) > 0 THEN
           LOCK TABLE transfers IN EXCLUSIVE MODE;
           -- RAISE NOTICE 'delete_metadata (on chain summary): transfers lock acquired';
           WITH a AS (
-            SELECT 
+            SELECT
               SUM(price) AS total_volume,
               SUM(tx_fee) AS transfer_fees,
               SUM(tx_size) AS transfer_footprint
@@ -7580,7 +7636,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             AND is_genesis = false
           ),
           remaining_inscriptions AS (
-            SELECT 
+            SELECT
               MIN(timestamp) as new_first_date,
               MAX(timestamp) as new_last_date,
               MIN(number) as new_range_start,
@@ -7605,10 +7661,10 @@ let full_query = Self::create_inscription_query_string(base_query, params);
             total_on_chain_footprint = coalesce(ocs.total_on_chain_footprint, 0) - OLD.content_length - a.transfer_footprint
           FROM a, remaining_inscriptions r
           WHERE ocs.parents_hash = hash_array(ARRAY(SELECT unnest(OLD.parents) ORDER BY 1));
-          
+
           -- Remove the collection if supply reaches 0
-          DELETE FROM on_chain_collection_summary 
-          WHERE parents_hash = hash_array(ARRAY(SELECT unnest(OLD.parents) ORDER BY 1)) 
+          DELETE FROM on_chain_collection_summary
+          WHERE parents_hash = hash_array(ARRAY(SELECT unnest(OLD.parents) ORDER BY 1))
           AND supply <= 0;
         END IF;
 
@@ -7661,7 +7717,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           GROUP BY c.collection_symbol
         ) AS transfer_totals
         WHERE collection_summary.collection_symbol = transfer_totals.collection_symbol;
-        
+
         t2 := clock_timestamp();
         INSERT INTO trigger_timing_log as log (trigger_name, step_number, step_name, step_start_time, step_end_time, step_time_us)
           VALUES ('after_transfer_insert', 1, 'off_chain_collection_summary', t1, t2, (EXTRACT(EPOCH FROM (t2 - t1)) * 1000000)::bigint)
@@ -7743,8 +7799,8 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         END IF;
 
         -- 3. Update addresses table with the latest remaining transfer
-        UPDATE addresses 
-        SET 
+        UPDATE addresses
+        SET
           block_number = latest_transfer.block_number,
           block_timestamp = latest_transfer.block_timestamp,
           satpoint = latest_transfer.satpoint,
@@ -7760,19 +7816,19 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           is_genesis = latest_transfer.is_genesis,
           burn_metadata = latest_transfer.burn_metadata
         FROM (
-          SELECT * 
-          FROM transfers 
-          WHERE id = OLD.id 
+          SELECT *
+          FROM transfers
+          WHERE id = OLD.id
             AND NOT block_number = OLD.block_number
-          ORDER BY block_number DESC, tx_offset DESC 
+          ORDER BY block_number DESC, tx_offset DESC
           LIMIT 1
         ) AS latest_transfer
         WHERE addresses.id = OLD.id;
 
         -- 4. If no remaining transfers, delete from addresses table
         IF NOT EXISTS (
-          SELECT 1 FROM transfers 
-          WHERE id = OLD.id 
+          SELECT 1 FROM transfers
+          WHERE id = OLD.id
             AND NOT block_number = OLD.block_number
         ) THEN
           DELETE FROM addresses WHERE id = OLD.id;
@@ -7802,11 +7858,11 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         -- RAISE NOTICE 'previous_total: %, new_total: %', previous_total, new_total;
         -- Set the edition number in the new row to previous + 1
         NEW.edition := new_total;
-      
+
         -- Insert or update the total in editions_total
         INSERT INTO editions_total (sha256, total) VALUES (NEW.sha256, new_total)
         ON CONFLICT (sha256) DO UPDATE SET total = EXCLUDED.total;
-      
+
         RETURN NEW;
       END;
       $$ LANGUAGE plpgsql;"#).await?;
@@ -7824,14 +7880,14 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       CREATE OR REPLACE FUNCTION before_edition_delete() RETURNS TRIGGER AS $$
       BEGIN
         -- Decrement the total in editions_total
-        UPDATE editions_total 
-        SET total = total - 1 
+        UPDATE editions_total
+        SET total = total - 1
         WHERE sha256 = OLD.sha256;
-        
+
         -- Remove the record if total reaches 0
-        DELETE FROM editions_total 
+        DELETE FROM editions_total
         WHERE sha256 = OLD.sha256 AND total <= 0;
-        
+
         RETURN OLD;
       END;
       $$ LANGUAGE plpgsql;"#).await?;
@@ -7862,7 +7918,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           genesis_height,
           genesis_transaction,
           pointer,
-          number,          
+          number,
           parents,
           on_chain_collection_id,
           delegate,
@@ -7888,7 +7944,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           off_chain_metadata,
           collection_name
         )
-        SELECT 
+        SELECT
           o.sequence_number,
           o.id,
           o.content_length,
@@ -7899,7 +7955,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           o.genesis_height,
           o.genesis_transaction,
           o.pointer,
-          o.number,          
+          o.number,
           o.parents,
           o.on_chain_collection_id,
           o.delegate,
@@ -7921,8 +7977,8 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           o.spaced_rune,
           o.raw_properties,
           o.inscribed_by_address,
-          c.collection_symbol, 
-          c.off_chain_metadata, 
+          c.collection_symbol,
+          c.off_chain_metadata,
           l.name as collection_name
         FROM inserted_ordinals o
         LEFT JOIN collections c ON o.id = c.id
@@ -8015,7 +8071,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       CREATE INDEX IF NOT EXISTS idx_number ON editions_new (number);
       CREATE INDEX IF NOT EXISTS idx_sha256 ON editions_new (sha256);
       ALTER TABLE editions_total_new add primary key (sha256);
-      ALTER TABLE editions RENAME to editions_old; 
+      ALTER TABLE editions RENAME to editions_old;
       ALTER TABLE editions_new RENAME to editions;
       ALTER TABLE editions_total RENAME to editions_total_old;
       ALTER TABLE editions_total_new RENAME to editions_total;
@@ -8027,7 +8083,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       $$;"#).await?;
     Ok(())
   }
-  
+
   // deprecated for now
   async fn create_weights_procedure(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
@@ -8045,16 +8101,16 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'weights') THEN
       INSERT into proc_log(proc_name, step_name, ts) values ('WEIGHTS', 'START_CREATE_1', now());
         CREATE TABLE weights_1 as
-        select sha256, 
-               min(sequence_number) as first_number, 
-               sum(genesis_fee) as total_fee, 
-               max(content_length) as content_length, 
+        select sha256,
+               min(sequence_number) as first_number,
+               sum(genesis_fee) as total_fee,
+               max(content_length) as content_length,
                count(*) as count
-        from ordinals 
+        from ordinals
         where content_type ILIKE 'image%' and content_type !='image/svg+xml' and sha256 in (
-          select sha256 
-          from content_moderation 
-          where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL' 
+          select sha256
+          from content_moderation
+          where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL'
           or coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_AUTOMATED')
         group by sha256;
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_CREATE_1', now(), NULL);
@@ -8071,7 +8127,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_CREATE_2', now(), NULL);
       INSERT into proc_log(proc_name, step_name, ts) values ('WEIGHTS', 'START_CREATE_3', now());
         CREATE TABLE weights_3 AS
-        SELECT sha256, 
+        SELECT sha256,
               min(class) as class,
               min(first_number) AS first_number,
               sum(total_fee) AS total_fee
@@ -8087,7 +8143,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       INSERT into proc_log(proc_name, step_name, ts) values ('WEIGHTS', 'START_CREATE_5', now());
         CREATE TABLE weights_5 AS
         SELECT *,
-              sum(weight) OVER(ORDER BY class, first_number)/sum(weight) OVER() AS band_end, 
+              sum(weight) OVER(ORDER BY class, first_number)/sum(weight) OVER() AS band_end,
               coalesce(sum(weight) OVER(ORDER BY class, first_number ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)/sum(weight) OVER() AS band_start
         FROM weights_4;
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_CREATE_5', now(), NULL);
@@ -8108,22 +8164,22 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         CREATE INDEX idx_band_end ON weights (band_end);
         ALTER TABLE weights owner to vermilion_user;
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_INDEX', now(), NULL);
-      
+
       ELSE
-      
+
       INSERT into proc_log(proc_name, step_name, ts) values ('WEIGHTS', 'START_CREATE_NEW', now());
       DROP TABLE IF EXISTS weights_new;
         CREATE TABLE weights_1 as
-        select sha256, 
-               min(sequence_number) as first_number, 
-               sum(genesis_fee) as total_fee, 
-               max(content_length) as content_length, 
+        select sha256,
+               min(sequence_number) as first_number,
+               sum(genesis_fee) as total_fee,
+               max(content_length) as content_length,
                count(*) as count
-        from ordinals 
+        from ordinals
         where content_type ILIKE 'image%' and content_type !='image/svg+xml' and sha256 in (
-          select sha256 
-          from content_moderation 
-          where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL' 
+          select sha256
+          from content_moderation
+          where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL'
           or coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_AUTOMATED')
         group by sha256;
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_CREATE_NEW_1', now(), NULL);
@@ -8140,7 +8196,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_CREATE_NEW_2', now(), NULL);
       INSERT into proc_log(proc_name, step_name, ts) values ('WEIGHTS', 'START_CREATE_NEW_3', now());
         CREATE TABLE weights_3 AS
-        SELECT sha256, 
+        SELECT sha256,
               min(class) as class,
               min(first_number) AS first_number,
               sum(total_fee) AS total_fee
@@ -8156,7 +8212,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       INSERT into proc_log(proc_name, step_name, ts) values ('WEIGHTS', 'START_CREATE_NEW_5', now());
         CREATE TABLE weights_5 AS
         SELECT *,
-              sum(weight) OVER(ORDER BY class, first_number)/sum(weight) OVER() AS band_end, 
+              sum(weight) OVER(ORDER BY class, first_number)/sum(weight) OVER() AS band_end,
               coalesce(sum(weight) OVER(ORDER BY class, first_number ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)/sum(weight) OVER() AS band_start
         FROM weights_4;
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_CREATE_NEW_5', now(), NULL);
@@ -8182,7 +8238,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         ALTER INDEX new_idx_band_start RENAME TO idx_band_start;
         ALTER INDEX new_idx_band_end RENAME TO idx_band_end;
       INSERT into proc_log(proc_name, step_name, ts, rows_returned) values ('WEIGHTS', 'FINISH_INDEX_NEW', now(), NULL);
-      END IF;      
+      END IF;
       DROP TABLE IF EXISTS weights_1;
       DROP TABLE IF EXISTS weights_2;
       DROP TABLE IF EXISTS weights_3;
@@ -8192,7 +8248,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       $$;"#).await?;
     Ok(())
   }
-  
+
   async fn create_discover_weights_procedure(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query(
@@ -8203,21 +8259,21 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         drop table if exists discover_1, discover_2, discover_3, discover_4;
         CREATE TABLE discover_1 as
         WITH max_height AS (
-          SELECT max(genesis_height) as max 
+          SELECT max(genesis_height) as max
           FROM ordinals
         )
-        select sha256, 
-               min(sequence_number) as first_number, 
-               sum(genesis_fee) as total_fee, 
-               max(content_length) as content_length, 
+        select sha256,
+               min(sequence_number) as first_number,
+               sum(genesis_fee) as total_fee,
+               max(content_length) as content_length,
                count(*) as edition_count,
                (SELECT max FROM max_height) - max(genesis_height) as block_age,
                max(timestamp) as most_recent_timestamp
-        from ordinals 
+        from ordinals
         where content_type ILIKE 'image%' and content_type !='image/svg+xml' and sha256 in (
-          select sha256 
-          from content_moderation 
-          where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL' 
+          select sha256
+          from content_moderation
+          where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL'
           or coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_AUTOMATED')
         group by sha256;
 
@@ -8238,7 +8294,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
 
         CREATE TABLE discover_4 AS
         SELECT *,
-              sum(weight) OVER(ORDER BY class, first_number)/sum(weight) OVER() AS band_end, 
+              sum(weight) OVER(ORDER BY class, first_number)/sum(weight) OVER() AS band_end,
               coalesce(sum(weight) OVER(ORDER BY class, first_number ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)/sum(weight) OVER() AS band_start
         FROM discover_3;
 
@@ -8272,7 +8328,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           from ordinals o where o.sequence_number in (SELECT sequence_number from a)
           group by parents
         )
-        SELECT 
+        SELECT
           a.*,
           b.id,
           b.ids,
@@ -8291,10 +8347,10 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'discover_weights') THEN
           ALTER TABLE discover_weights RENAME to discover_weights_old;
         END IF;
-        IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'discover_idx_band_start') THEN          
+        IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'discover_idx_band_start') THEN
           ALTER INDEX discover_idx_band_start RENAME TO discover_idx_band_start_old;
         END IF;
-        IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'discover_idx_band_end') THEN          
+        IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'discover_idx_band_end') THEN
           ALTER INDEX discover_idx_band_end RENAME TO discover_idx_band_end_old;
         END IF;
 
@@ -8329,10 +8385,10 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       --delegates
       CREATE TABLE trending_delegates AS
       WITH max_height AS (
-          SELECT max(genesis_height) as max 
+          SELECT max(genesis_height) as max
           FROM ordinals
       ), a AS (
-          SELECT 
+          SELECT
               o1.delegate,
               sum(o1.genesis_fee) as fee,
               sum(o1.content_length) as size,
@@ -8341,33 +8397,33 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           FROM ordinals o1
           LEFT JOIN ordinals o2
           ON o1.delegate=o2.id
-          WHERE o1.delegate IS NOT NULL 
+          WHERE o1.delegate IS NOT NULL
           -- AND o1.parents = '{}'
           AND o1.genesis_height > ((SELECT max FROM max_height) - 4032)
           AND o1.spaced_rune IS NULL
           AND o2.content_category IN ('image')
           GROUP BY o1.delegate
       ), b AS (
-          SELECT 
-              delegate, 
+          SELECT
+              delegate,
               count(*) as orphan_delegate_count
           from ordinals
           where delegate in (SELECT delegate from a)
           AND parents = '{}'
           group by delegate
       ), c AS (
-          SELECT 
-              delegate, 
+          SELECT
+              delegate,
               count(*) as full_delegate_count
           from ordinals
           where delegate in (SELECT delegate from a)
           group by delegate
       )
-      SELECT 
-          a.*, 
+      SELECT
+          a.*,
           b.orphan_delegate_count,
           c.full_delegate_count
-      FROM a 
+      FROM a
       LEFT JOIN b ON a.delegate=b.delegate
       LEFT JOIN c ON a.delegate=c.delegate;
 
@@ -8391,14 +8447,14 @@ let full_query = Self::create_inscription_query_string(base_query, params);
         GROUP BY parents
       ),
       with_runes AS (
-        SELECT 
+        SELECT
           p.*,
           ARRAY(
             SELECT o.spaced_rune
             FROM ordinals o
             WHERE o.id = ANY(p.parents)
             ORDER BY array_position(p.parents, o.id)
-          ) as parent_spaced_runes 
+          ) as parent_spaced_runes
         FROM p
       )
       SELECT * FROM with_runes
@@ -8486,7 +8542,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       CREATE TABLE trending_union AS
       SELECT
           parents as ids,
-          CASE 
+          CASE
               WHEN array_length(parents, 1) = 1 THEN parents[1] ELSE NULL
           END as id,
           parents[1] as first_id,
@@ -8544,9 +8600,9 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       SELECT *
       FROM A
       WHERE sha256 in (
-        select sha256 
-        from content_moderation 
-        where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL' 
+        select sha256
+        from content_moderation
+        where coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_MANUAL'
         or coalesce(human_override_moderation_flag, automated_moderation_flag) = 'SAFE_AUTOMATED'
         or coalesce(human_override_moderation_flag, automated_moderation_flag) = 'UNKNOWN_AUTOMATED'
       ) OR sha256 IS NULL;
@@ -8574,12 +8630,12 @@ let full_query = Self::create_inscription_query_string(base_query, params);
           WHERE on_chain_collection_id in (SELECT ids_hash from a)
           group by on_chain_collection_id, parents
       )
-      SELECT 
+      SELECT
           a.*,
           CAST(coalesce(c.children_count, 0) AS INT8) as children_count,
           CAST(coalesce(d.total, 0) AS INT8) as delegate_count,
           CAST(coalesce(ic.total, 0) AS INT8) as comment_count,
-          CAST(sum(weight) OVER(ORDER BY block_age, ids)/sum(weight) OVER() AS FLOAT8) AS band_end, 
+          CAST(sum(weight) OVER(ORDER BY block_age, ids)/sum(weight) OVER() AS FLOAT8) AS band_end,
           CAST(coalesce(sum(weight) OVER(ORDER BY block_age, ids ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)/sum(weight) OVER() AS FLOAT8) AS band_start,
           CAST(ROW_NUMBER() OVER (ORDER BY block_age, ids) AS INT8) AS band_id
       FROM a
@@ -8610,36 +8666,36 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       LOCK TABLE transfers IN EXCLUSIVE MODE;
       RAISE NOTICE 'update_collection_summary: lock acquired';
         with a as (
-          select 
-            c.collection_symbol,             
-            count(*) as supply, 
+          select
+            c.collection_symbol,
+            count(*) as supply,
             sum(o.content_length) as total_inscription_size,
             sum(o.genesis_fee) as total_inscription_fees,
             min(timestamp) as first_inscribed_date,
             max(timestamp) as last_inscribed_date,
-            min(o.number) as range_start, 
-            max(o.number) as range_end 
-          from collections c 
-          inner join ordinals o on c.id=o.id 
+            min(o.number) as range_start,
+            max(o.number) as range_end
+          from collections c
+          inner join ordinals o on c.id=o.id
           group by c.collection_symbol
         ), b as (
-          select 
-            c.collection_symbol, 
-            sum(price) as total_volume, 
-            sum(tx_fee) as transfer_fees, 
-            sum(tx_size) as transfer_footprint 
-            from collections c left join transfers t on c.id=t.id            
+          select
+            c.collection_symbol,
+            sum(price) as total_volume,
+            sum(tx_fee) as transfer_fees,
+            sum(tx_size) as transfer_footprint
+            from collections c left join transfers t on c.id=t.id
             where NOT t.is_genesis and t.id in (select id from collections)
             group by c.collection_symbol
-        ) 
-        INSERT INTO collection_summary (collection_symbol, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint) 
-        select 
-          a.*, 
+        )
+        INSERT INTO collection_summary (collection_symbol, supply, total_inscription_size, total_inscription_fees, first_inscribed_date, last_inscribed_date, range_start, range_end, total_volume, transfer_fees, transfer_footprint, total_fees, total_on_chain_footprint)
+        select
+          a.*,
           coalesce(b.total_volume,0),
-          coalesce(b.transfer_fees,0), 
+          coalesce(b.transfer_fees,0),
           coalesce(b.transfer_footprint,0),
-          a.total_inscription_fees + coalesce(b.transfer_fees,0), 
-          a.total_inscription_size + coalesce(b.transfer_footprint,0) 
+          a.total_inscription_fees + coalesce(b.transfer_fees,0),
+          a.total_inscription_size + coalesce(b.transfer_footprint,0)
         from a left join b on a.collection_symbol=b.collection_symbol
         ON CONFLICT (collection_symbol) DO UPDATE SET
         supply = EXCLUDED.supply,
@@ -8658,7 +8714,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       $$;"#).await?;
     Ok(())
   }
-  
+
   async fn update_collection_summary(pool: deadpool_postgres::Pool<>) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     conn.simple_query("CALL update_collection_summary()").await?;
@@ -8673,7 +8729,7 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       CREATE OR REPLACE PROCEDURE update_on_chain_collection_summary()
       LANGUAGE plpgsql
       AS $$
-      BEGIN      
+      BEGIN
       LOCK TABLE ordinals IN EXCLUSIVE MODE;
       LOCK TABLE transfers IN EXCLUSIVE MODE;
       RAISE NOTICE 'update_on_chain_collection_summary: lock acquired';
@@ -9006,9 +9062,9 @@ let full_query = Self::create_inscription_query_string(base_query, params);
       let step_start_time: Option<std::time::SystemTime> = row.get(3);
       let step_end_time: Option<std::time::SystemTime> = row.get(4);
       result.push((
-        row.get(0), 
-        row.get(1), 
-        row.get(2), 
+        row.get(0),
+        row.get(1),
+        row.get(2),
         step_start_time.map(|t| {
           let datetime = chrono::DateTime::<chrono::Utc>::from(t);
           datetime.format("%H:%M:%S%.6f").to_string()
@@ -9027,17 +9083,17 @@ let full_query = Self::create_inscription_query_string(base_query, params);
     let conn = pool.get().await?;
     // conn.simple_query(
     //   r"CREATE OR REPLACE VIEW ordinals_full_v AS
-    //     SELECT o.*, 
-    //            c.collection_symbol, 
-    //            c.off_chain_metadata, 
-    //            l.name as collection_name 
-    //     FROM ordinals o 
-    //     left join collections c on o.id=c.id 
+    //     SELECT o.*,
+    //            c.collection_symbol,
+    //            c.off_chain_metadata,
+    //            l.name as collection_name
+    //     FROM ordinals o
+    //     left join collections c on o.id=c.id
     //     left join collection_list l on c.collection_symbol=l.collection_symbol").await?;
     conn.simple_query(
       r"CREATE OR REPLACE VIEW ordinals_full_v AS
         SELECT * from ordinals_full_t;").await?;
     Ok(())
   }
-  
+
 }
