@@ -1,5 +1,13 @@
-`ordpg`
-=====
+
+## About This Fork
+
+This fork is maintained by for internal release/process control and improved version pinning in CI/CD.
+
+- Our default branch is main, and our upstream from Vermillion is the 'vermilion' branch.
+
+- Releases and tags here are internal and tailored to our build matrix and automation.
+
+- We selectively sync with upstream and may submit changes upstream if broadly useful.
 
 `ordpg` is a fork of `ord` that uploads inscription content to a postgres database. It also makes available an api that allows for easy access of the content/metadata. It is the backend behind the open source ordinal explorer available at [vermilion.place](https://vermilion.place) and [vermilion](https://github.com/SmarakNayak/Vermilion).
 
@@ -36,67 +44,6 @@ you can also run the indexer alone via:
 ```
 ord --index-sats --index-transactions --index-runes index update
 ```
-
-Feedback, issues, pull requests all welcome!
-
-<h1 align=center><code>ord</code></h1>
-
-<div align=center>
-  <a href=https://crates.io/crates/ord>
-    <img src=https://img.shields.io/crates/v/ord.svg alt="crates.io version">
-  </a>
-  <a href=https://github.com/ordinals/ord/actions/workflows/ci.yaml>
-    <img src=https://github.com/ordinals/ord/actions/workflows/ci.yaml/badge.svg alt="build status">
-  </a>
-  <a href=https://github.com/ordinals/ord/releases>
-    <img src=https://img.shields.io/github/downloads/ordinals/ord/total.svg alt=downloads>
-  </a>
-  <a href=https://discord.gg/ordinals>
-    <img src=https://img.shields.io/discord/987504378242007100?logo=discord alt="chat on discord">
-  </a>
-</div>
-<br>
-
-`ord` is an index, block explorer, and command-line wallet. It is experimental
-software with no warranty. See [LICENSE](LICENSE) for more details.
-
-Ordinal theory imbues satoshis with numismatic value, allowing them to
-be collected and traded as curios.
-
-Ordinal numbers are serial numbers for satoshis, assigned in the order in which
-they are mined, and preserved across transactions.
-
-See [the docs](https://docs.ordinals.com) for documentation and guides.
-
-See [the BIP](bip.mediawiki) for a technical description of the assignment and
-transfer algorithm.
-
-See [the project board](https://github.com/orgs/ordinals/projects/1) for
-currently prioritized issues.
-
-Join [the Discord server](https://discord.gg/87cjuz4FYg) to chat with fellow
-ordinal degenerates.
-
-Donate
-------
-
-Ordinals is open-source and community funded. The current lead maintainer of
-`ord` is [raphjaph](https://github.com/raphjaph/). Raph's work on `ord` is
-entirely funded by donations. If you can, please consider donating!
-
-The donation address is
-[bc1qguzk63exy7h5uygg8m2tcenca094a8t464jfyvrmr0s6wkt74wls3zr5m3](https://mempool.space/address/bc1qguzk63exy7h5uygg8m2tcenca094a8t464jfyvrmr0s6wkt74wls3zr5m3).
-
-This address is 2 of 4 multisig wallet with keys held by
-[raphjaph](https://twitter.com/raphjaph),
-[erin](https://twitter.com/realizingerin),
-[rodarmor](https://twitter.com/rodarmor), and
-[ordinally](https://twitter.com/veryordinally).
-
-Bitcoin received will go towards funding maintenance and development of `ord`,
-as well as hosting costs for [ordinals.com](https://ordinals.com).
-
-Thank you for donating!
 
 Wallet
 ------
@@ -329,75 +276,3 @@ backtrace. For example, run the server and turn on debugging and full backtrace:
 ```
 $ RUST_BACKTRACE=1 RUST_LOG=debug ord server
 ```
-
-New Releases
-------------
-
-Release commit messages use the following template:
-
-```
-Release x.y.z
-
-- Bump version: x.y.z → x.y.z
-- Update changelog
-- Update changelog contributor credits
-- Update dependencies
-```
-
-Translations
-------------
-
-To translate [the docs](https://docs.ordinals.com) we use
-[mdBook i18n helper](https://github.com/google/mdbook-i18n-helpers).
-
-See
-[mdbook-i18n-helpers usage guide](https://github.com/google/mdbook-i18n-helpers/blob/main/i18n-helpers/USAGE.md)
-for help.
-
-Adding a new translations is somewhat involved, so feel free to start
-translation and open a pull request, even if your translation is incomplete.
-
-Take a look at
-[this commit](https://github.com/ordinals/ord/commit/329f31bf6dac207dad001507dd6f18c87fdef355)
-for an example of adding a new translation. A maintainer will help you integrate it
-into our build system.
-
-To start a new translation:
-
-1. Install `mdbook`, `mdbook-i18n-helpers`, and `mdbook-linkcheck`:
-
-   ```
-   cargo install mdbook mdbook-i18n-helpers mdbook-linkcheck
-   ```
-
-2. Generate a new `pot` file named `messages.pot`:
-
-   ```
-   MDBOOK_OUTPUT='{"xgettext": {"pot-file": "messages.pot"}}'
-   mdbook build -d po
-   ```
-
-3. Run `msgmerge` on `XX.po` where `XX` is the two-letter
-   [ISO-639](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) code for
-   the language you are translating into. This will update the `po` file with
-   the text of the most recent English version:
-
-   ```
-   msgmerge --update po/XX.po po/messages.pot
-   ```
-
-4. Untranslated sections are marked with `#, fuzzy` in `XX.po`. Edit the
-   `msgstr` string with the translated text.
-
-5. Execute the `mdbook` command to rebuild the docs. For Chinese, whose
-   two-letter ISO-639 code is `zh`:
-
-   ```
-   mdbook build docs -d build
-   MDBOOK_BOOK__LANGUAGE=zh mdbook build docs -d build/zh
-   mv docs/build/zh/html docs/build/html/zh
-   python3 -m http.server --directory docs/build/html --bind 127.0.0.1 8080
-   ```
-
-6. If everything looks good, commit `XX.po` and open a pull request on GitHub.
-   Other changed files should be omitted from the pull request.
